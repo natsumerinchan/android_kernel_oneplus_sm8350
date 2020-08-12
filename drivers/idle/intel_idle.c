@@ -92,14 +92,6 @@ static int intel_idle_s2idle(struct cpuidle_device *dev,
 static struct cpuidle_state *cpuidle_state_table;
 
 /*
- * Set this flag for states where the HW flushes the TLB for us
- * and so we don't need cross-calls to keep it consistent.
- * If this flag is set, SW flushes the TLB, so even if the
- * HW doesn't do the flushing, this flag is safe to use.
- */
-#define CPUIDLE_FLAG_TLB_FLUSHED	0x10000
-
-/*
  * Disable IBRS across idle (when KERNEL_IBRS), is exclusive vs IRQ_ENABLE
  * above.
  */
@@ -928,14 +920,6 @@ static __cpuidle int intel_idle(struct cpuidle_device *dev,
 	unsigned long eax = flg2MWAIT(state->flags);
 	unsigned int cstate;
 	bool uninitialized_var(tick);
-	int cpu = smp_processor_id();
-
-	/*
-	 * leave_mm() to avoid costly and often unnecessary wakeups
-	 * for flushing the user TLB's associated with the active mm.
-	 */
-	if (state->flags & CPUIDLE_FLAG_TLB_FLUSHED)
-		leave_mm(cpu);
 
 	if (!static_cpu_has(X86_FEATURE_ARAT)) {
 		cstate = (((eax) >> MWAIT_SUBSTATE_SIZE) &
