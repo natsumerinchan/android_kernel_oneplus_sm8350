@@ -518,6 +518,7 @@ static struct platform_driver gpu_cc_holi_driver = {
 		.name = "gpu_cc-holi",
 		.of_match_table = gpu_cc_holi_match_table,
 		.sync_state = gpucc_holi_sync_state,
+		.probe_type = PROBE_FORCE_SYNCHRONOUS,
 	},
 };
 

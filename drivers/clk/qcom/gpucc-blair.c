@@ -513,6 +513,7 @@ static struct platform_driver gpu_cc_blair_driver = {
 		.name = "gpu_cc-blair",
 		.of_match_table = gpu_cc_blair_match_table,
 		.sync_state = gpu_cc_blair_sync_state,
+		.probe_type = PROBE_FORCE_SYNCHRONOUS,
 	},
 };
 
