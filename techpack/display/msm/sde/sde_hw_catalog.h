@@ -71,7 +71,7 @@
 #define IS_MONACO_TARGET(rev) false
 #define IS_BLAIR_TARGET(rev) false
 #define IS_LAHAINA_TARGET(rev) true
-#define IS_YUPIK_TARGET(rev) false
+#define IS_YUPIK_TARGET(rev) true
 
 #define SDE_HW_BLK_NAME_LEN	16
 
