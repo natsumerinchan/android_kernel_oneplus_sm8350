@@ -13,10 +13,6 @@
 #include "sde_trace.h"
 #include "sde_dbg.h"
 
-#ifdef OPLUS_BUG_STABILITY
-#include "oplus_adfr.h"
-#endif
-
 #define to_dsi_bridge(x)     container_of((x), struct dsi_bridge, base)
 #define to_dsi_state(x)      container_of((x), struct dsi_connector_state, base)
 
@@ -152,17 +148,10 @@ void dsi_convert_to_drm_mode(const struct dsi_display_mode *dsi_mode,
 	/* check width value by the first value in mode name, so magic code can not at head */
 	/* please refer the qcom check logic in the file init.qcom.early_boot.sh */
 	/* set mode name */
-	if (oplus_adfr_is_support()) {
-		snprintf(drm_mode->name, DRM_DISPLAY_MODE_LEN, "%dx%dx%dx%d%sx%d",
-				drm_mode->hdisplay, drm_mode->vdisplay, drm_mode->vrefresh,
-				dsi_mode->vsync_source, video_mode ? "vid" : "cmd",
-				drm_mode->clock);
-	} else {
 		snprintf(drm_mode->name, DRM_DISPLAY_MODE_LEN, "%dx%dx%dx%d%s",
 			drm_mode->hdisplay, drm_mode->vdisplay,
 			drm_mode->vrefresh, drm_mode->clock,
 			video_mode ? "vid" : "cmd");
-	}
 #else
 	/* set mode name */
 	snprintf(drm_mode->name, DRM_DISPLAY_MODE_LEN, "%dx%dx%dx%d%s",
@@ -414,13 +403,6 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 	dsi_mode.dsi_mode_flags = panel_dsi_mode->dsi_mode_flags;
 	dsi_mode.timing.dsc_enabled = dsi_mode.priv_info->dsc_enabled;
 	dsi_mode.timing.dsc = &dsi_mode.priv_info->dsc;
-
-#ifdef OPLUS_BUG_STABILITY
-	/* add vsync spurce info from panel_dsi_mode to dsi_mode */
-	if (oplus_adfr_is_support()) {
-		dsi_mode.vsync_source = panel_dsi_mode->vsync_source;
-	}
-#endif
 
 	rc = dsi_display_validate_mode(c_bridge->display, &dsi_mode,
 			DSI_VALIDATE_FLAG_ALLOW_ADJUST);
