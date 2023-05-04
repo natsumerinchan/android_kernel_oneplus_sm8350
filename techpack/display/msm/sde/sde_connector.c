@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -228,8 +227,11 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 	vm_ops = sde_vm_get_ops(sde_kms);
 	if (vm_ops && vm_ops->vm_owns_hw && !vm_ops->vm_owns_hw(sde_kms)) {
 		SDE_DEBUG("skipping bl update due to HW unavailablity\n");
-		goto done;
+		sde_vm_unlock(sde_kms);
+		return rc;
 	}
+
+	sde_vm_unlock(sde_kms);
 
 #ifndef OPLUS_BUG_STABILITY
 	if (c_conn->ops.set_backlight) {
@@ -314,8 +316,6 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 #ifdef OPLUS_BUG_STABILITY
 	SDE_ATRACE_END("sde_backlight_device_update_status");
 #endif
-done:
-	sde_vm_unlock(sde_kms);
 
 	return rc;
 }
@@ -550,8 +550,8 @@ static void _sde_connector_install_dither_property(struct drm_device *dev,
 	char prop_name[DRM_PROP_NAME_LEN];
 	struct sde_mdss_cfg *catalog = NULL;
 	u32 version = 0;
-//#ifdef OPLUS_BUG_STABILITY
 	void *cfg;
+//#ifdef OPLUS_BUG_STABILITY
 	struct drm_property_blob *blob_ptr;
 	int ret = 0;
   	u32 len = 0;
@@ -609,7 +609,6 @@ int sde_connector_get_dither_cfg(struct drm_connector *conn,
 	struct sde_connector *c_conn = NULL;
 	struct sde_connector_state *c_state = NULL;
 	size_t dither_sz = 0;
-	bool is_dirty;
 	u32 *p = (u32 *)cfg;
 
 	if (!conn || !state || !p) {
@@ -619,29 +618,19 @@ int sde_connector_get_dither_cfg(struct drm_connector *conn,
 
 	c_conn = to_sde_connector(conn);
 	c_state = to_sde_connector_state(state);
-
-	is_dirty = msm_property_is_dirty(&c_conn->property_info,
-			&c_state->property_state,
-			CONNECTOR_PROP_PP_DITHER);
-
-	if (!is_dirty && !idle_pc) {
-		return -ENODATA;
-	} else if (is_dirty || idle_pc) {
-		*cfg = msm_property_get_blob(&c_conn->property_info,
-				&c_state->property_state,
-				&dither_sz,
-				CONNECTOR_PROP_PP_DITHER);
-		/*
-		 * in idle_pc use case return early,
-		 * when dither is already disabled.
-		 */
-		if (idle_pc && *cfg == NULL)
-			return -ENODATA;
-		/* disable dither based on user config data */
-		else if (*cfg == NULL)
-			return 0;
-	}
-	*len = dither_sz;
+//#ifdef OPLUS_BUG_STABILITY
+	/* try to get user config data first */
+  	*cfg = msm_property_get_blob(&c_conn->property_info,
+  					&c_state->property_state,
+  					&dither_sz,
+  					CONNECTOR_PROP_PP_DITHER);
+  	/* if user config data doesn't exist, use default dither blob */
+  	if (*cfg == NULL && c_conn->blob_dither) {
+  		*cfg = c_conn->blob_dither->data;
+  		dither_sz = c_conn->blob_dither->length;
+  	}
+  	*len = dither_sz;
+//#endif
 	return 0;
 }
 
@@ -1104,6 +1093,10 @@ static int _sde_connector_update_dirty_properties(
 			_sde_connector_update_power_locked(c_conn);
 			mutex_unlock(&c_conn->lock);
 			break;
+		case CONNECTOR_PROP_BL_SCALE:
+		case CONNECTOR_PROP_SV_BL_SCALE:
+			_sde_connector_update_bl_scale(c_conn);
+			break;
 		case CONNECTOR_PROP_HDR_METADATA:
 			_sde_connector_update_hdr_metadata(c_conn, c_state);
 			break;
@@ -1144,7 +1137,13 @@ struct sde_connector_dyn_hdr_metadata *sde_connector_get_dyn_hdr_meta(
 	return &c_state->dyn_hdr_meta;
 }
 
-int sde_connector_pre_kickoff(struct drm_connector *connector)
+int sde_connector_update_complete_commit(struct drm_connector *connector,
+		bool force_update_dsi_clocks)
+{
+	return sde_connector_pre_kickoff(connector, force_update_dsi_clocks);
+}
+
+int sde_connector_pre_kickoff(struct drm_connector *connector, bool force_update_dsi_clocks)
 {
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
@@ -1200,7 +1199,7 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 
 	SDE_EVT32_VERBOSE(connector->base.id);
 
-	rc = c_conn->ops.pre_kickoff(connector, c_conn->display, &params);
+	rc = c_conn->ops.pre_kickoff(connector, c_conn->display, &params, force_update_dsi_clocks);
 
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
 		display->queue_cmd_waits = false;
@@ -1293,6 +1292,17 @@ void sde_connector_helper_bridge_disable(struct drm_connector *connector)
 void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn = NULL;
+
+    if (!connector)
+        return;
+
+    c_conn = to_sde_connector(connector);
+    c_conn->panel_dead = false;
+}
+
+void sde_connector_helper_post_kickoff(struct drm_connector *connector)
+{
+    struct sde_connector *c_conn = NULL;
 	struct dsi_display *display;
 	struct sde_kms *sde_kms;
 
@@ -1322,7 +1332,6 @@ void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 		c_conn->bl_device->props.state &= ~BL_CORE_FBBLANK;
 		backlight_update_status(c_conn->bl_device);
 	}
-	c_conn->panel_dead = false;
 }
 
 int sde_connector_clk_ctrl(struct drm_connector *connector, bool enable)
@@ -1357,9 +1366,6 @@ void sde_connector_destroy(struct drm_connector *connector)
 	}
 
 	c_conn = to_sde_connector(connector);
-
-	if (c_conn->sysfs_dev)
-		device_unregister(c_conn->sysfs_dev);
 
 	/* cancel if any pending esd work */
 	sde_connector_schedule_status_work(connector, false);
@@ -2186,7 +2192,7 @@ static int _sde_connector_lm_preference(struct sde_connector *sde_conn,
 		return -EINVAL;
 	}
 
-	sde_conn->lm_mask = sde_hw_mixer_set_preference(sde_kms->catalog, num_lm, disp_type);
+	sde_hw_mixer_set_preference(sde_kms->catalog, num_lm, disp_type);
 
 	return ret;
 }
@@ -3029,7 +3035,7 @@ int sde_connector_set_blob_data(struct drm_connector *conn,
 		return -EINVAL;
 	}
 
-	info = vzalloc(sizeof(*info));
+	info = kzalloc(sizeof(*info), GFP_KERNEL);
 	if (!info)
 		return -ENOMEM;
 
@@ -3087,7 +3093,7 @@ int sde_connector_set_blob_data(struct drm_connector *conn,
 			SDE_KMS_INFO_DATALEN(info),
 			prop_id);
 exit:
-	vfree(info);
+	kfree(info);
 
 	return rc;
 }
@@ -3252,104 +3258,6 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	return 0;
 }
 
-static ssize_t panel_power_state_show(struct device *device,
-	struct device_attribute *attr, char *buf)
-{
-	struct drm_connector *conn;
-	struct sde_connector *sde_conn;
-
-	conn = dev_get_drvdata(device);
-	sde_conn = to_sde_connector(conn);
-
-	return scnprintf(buf, PAGE_SIZE, "%d\n", sde_conn->last_panel_power_mode);
-}
-
-static ssize_t twm_enable_store(struct device *device,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct drm_connector *conn;
-	struct sde_connector *sde_conn;
-	struct dsi_display *dsi_display;
-	int rc;
-	int data;
-
-	conn = dev_get_drvdata(device);
-	sde_conn = to_sde_connector(conn);
-	dsi_display = (struct dsi_display *) sde_conn->display;
-	rc = kstrtoint(buf, 10, &data);
-	if (rc) {
-		SDE_ERROR("kstrtoint failed, rc = %d\n", rc);
-		return -EINVAL;
-	}
-	sde_conn->twm_en = data ? true : false;
-	dsi_display->panel->is_twm_en = sde_conn->twm_en;
-	sde_conn->allow_bl_update = data ? false : true;
-	SDE_DEBUG("TWM: %s\n", sde_conn->twm_en ? "ENABLED" : "DISABLED");
-	return count;
-}
-
-static ssize_t twm_enable_show(struct device *device,
-	struct device_attribute *attr, char *buf)
-{
-	struct drm_connector *conn;
-	struct sde_connector *sde_conn;
-
-	conn = dev_get_drvdata(device);
-	sde_conn = to_sde_connector(conn);
-
-	SDE_DEBUG("TWM: %s\n", sde_conn->twm_en ? "ENABLED" : "DISABLED");
-	return scnprintf(buf, PAGE_SIZE, "%d\n", sde_conn->twm_en);
-}
-
-static DEVICE_ATTR_RO(panel_power_state);
-static DEVICE_ATTR_RW(twm_enable);
-
-static struct attribute *sde_connector_dev_attrs[] = {
-	&dev_attr_panel_power_state.attr,
-	&dev_attr_twm_enable.attr,
-	NULL
-};
-
-static const struct attribute_group sde_connector_attr_group = {
-	.attrs = sde_connector_dev_attrs,
-};
-static const struct attribute_group *sde_connector_attr_groups[] = {
-	&sde_connector_attr_group,
-	NULL,
-};
-
-int sde_connector_post_init(struct drm_device *dev, struct drm_connector *conn)
-{
-	struct sde_connector *c_conn;
-	int rc = 0;
-
-	if (!dev || !dev->primary || !dev->primary->kdev || !conn) {
-		SDE_ERROR("invalid input param(s)\n");
-		rc = -EINVAL;
-		return rc;
-	}
-
-	c_conn =  to_sde_connector(conn);
-
-	if (conn->connector_type != DRM_MODE_CONNECTOR_DSI)
-		return rc;
-
-	c_conn->sysfs_dev =
-		device_create_with_groups(dev->primary->kdev->class, dev->primary->kdev, 0,
-			conn, sde_connector_attr_groups, "sde-conn-%d-%s", conn->index,
-			conn->name);
-	if (IS_ERR_OR_NULL(c_conn->sysfs_dev)) {
-		SDE_ERROR("connector:%d sysfs create failed rc:%ld\n", &c_conn->base.index,
-			PTR_ERR(c_conn->sysfs_dev));
-		if (!c_conn->sysfs_dev)
-			rc = -EINVAL;
-		else
-			rc = PTR_ERR(c_conn->sysfs_dev);
-	}
-
-	return rc;
-}
-
 struct drm_connector *sde_connector_init(struct drm_device *dev,
 		struct drm_encoder *encoder,
 		struct drm_panel *panel,
@@ -3401,7 +3309,6 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 	c_conn->dpms_mode = DRM_MODE_DPMS_ON;
 	c_conn->lp_mode = 0;
 	c_conn->last_panel_power_mode = SDE_MODE_DPMS_ON;
-	c_conn->twm_en = false;
 
 	sde_kms = to_sde_kms(priv->kms);
 	if (sde_kms->vbif[VBIF_NRT]) {

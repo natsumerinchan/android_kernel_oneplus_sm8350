@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of_device.h>
@@ -10,10 +9,6 @@
 #include <linux/clk.h>
 #include <linux/of_irq.h>
 #include <video/mipi_display.h>
-
-#ifdef CONFIG_UIO
-#include <linux/uio_driver.h>
-#endif
 
 #include "msm_drv.h"
 #include "msm_kms.h"
@@ -412,6 +407,13 @@ static void dsi_ctrl_dma_cmd_wait_for_done(struct work_struct *work)
 	dsi_hw_ops = dsi_ctrl->hw.ops;
 	SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_ENTRY);
 
+	/*
+	 * This atomic state will be set if ISR has been triggered,
+	 * so the wait is not needed.
+	 */
+	if (atomic_read(&dsi_ctrl->dma_irq_trig))
+		goto done;
+
 	ret = wait_for_completion_timeout(
 			&dsi_ctrl->irq_info.cmd_dma_done,
 			msecs_to_jiffies(DSI_CTRL_TX_TO_MS));
@@ -457,8 +459,8 @@ static void dsi_ctrl_dma_cmd_wait_for_done(struct work_struct *work)
 					DSI_SINT_CMD_MODE_DMA_DONE);
 	}
 
+done:
 	dsi_ctrl->dma_wait_queued = false;
-	SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_EXIT);
 }
 
 static int dsi_ctrl_check_state(struct dsi_ctrl *dsi_ctrl,
@@ -702,34 +704,34 @@ static int dsi_ctrl_clocks_deinit(struct dsi_ctrl *ctrl)
 	struct dsi_link_hs_clk_info *hs_link = &ctrl->clk_info.hs_link_clks;
 	struct dsi_clk_link_set *rcg = &ctrl->clk_info.rcg_clks;
 
-	if (!IS_ERR_OR_NULL(core->mdp_core_clk))
+	if (core->mdp_core_clk)
 		devm_clk_put(&ctrl->pdev->dev, core->mdp_core_clk);
-	if (!IS_ERR_OR_NULL(core->iface_clk))
+	if (core->iface_clk)
 		devm_clk_put(&ctrl->pdev->dev, core->iface_clk);
-	if (!IS_ERR_OR_NULL(core->core_mmss_clk))
+	if (core->core_mmss_clk)
 		devm_clk_put(&ctrl->pdev->dev, core->core_mmss_clk);
-	if (!IS_ERR_OR_NULL(core->bus_clk))
+	if (core->bus_clk)
 		devm_clk_put(&ctrl->pdev->dev, core->bus_clk);
-	if (!IS_ERR_OR_NULL(core->mnoc_clk))
+	if (core->mnoc_clk)
 		devm_clk_put(&ctrl->pdev->dev, core->mnoc_clk);
 
 	memset(core, 0x0, sizeof(*core));
 
-	if (!IS_ERR_OR_NULL(hs_link->byte_clk))
+	if (hs_link->byte_clk)
 		devm_clk_put(&ctrl->pdev->dev, hs_link->byte_clk);
-	if (!IS_ERR_OR_NULL(hs_link->pixel_clk))
+	if (hs_link->pixel_clk)
 		devm_clk_put(&ctrl->pdev->dev, hs_link->pixel_clk);
-	if (!IS_ERR_OR_NULL(lp_link->esc_clk))
+	if (lp_link->esc_clk)
 		devm_clk_put(&ctrl->pdev->dev, lp_link->esc_clk);
-	if (!IS_ERR_OR_NULL(hs_link->byte_intf_clk))
+	if (hs_link->byte_intf_clk)
 		devm_clk_put(&ctrl->pdev->dev, hs_link->byte_intf_clk);
 
 	memset(hs_link, 0x0, sizeof(*hs_link));
 	memset(lp_link, 0x0, sizeof(*lp_link));
 
-	if (!IS_ERR_OR_NULL(rcg->byte_clk))
+	if (rcg->byte_clk)
 		devm_clk_put(&ctrl->pdev->dev, rcg->byte_clk);
-	if (!IS_ERR_OR_NULL(rcg->pixel_clk))
+	if (rcg->pixel_clk)
 		devm_clk_put(&ctrl->pdev->dev, rcg->pixel_clk);
 
 	memset(rcg, 0x0, sizeof(*rcg));
@@ -977,9 +979,6 @@ int dsi_ctrl_pixel_format_to_bpp(enum dsi_pixel_format dst_format)
 		break;
 	case DSI_PIXEL_FORMAT_RGB888:
 		bpp = 24;
-		break;
-	case DSI_PIXEL_FORMAT_RGB101010:
-		bpp = 30;
 		break;
 	default:
 		bpp = 24;
@@ -1421,10 +1420,6 @@ static void dsi_kickoff_msg_tx(struct dsi_ctrl *dsi_ctrl,
 		dsi_hw_ops.reset_trig_ctrl(&dsi_ctrl->hw,
 				&dsi_ctrl->host_config.common_config);
 
-	if (dsi_hw_ops.init_cmddma_trig_ctrl)
-		dsi_hw_ops.init_cmddma_trig_ctrl(&dsi_ctrl->hw,
-				&dsi_ctrl->host_config.common_config);
-
 	/*
 	 * Always enable DMA scheduling for video mode panel.
 	 *
@@ -1666,8 +1661,7 @@ static int dsi_message_tx(struct dsi_ctrl *dsi_ctrl,
 
 #ifndef OPLUS_BUG_STABILITY
 /* PSW.MM.Display.LCD.Stability, 2021/11/17, add for skip clear dma if no need */
-	if ((*flags & DSI_CTRL_CMD_BROADCAST) &&
-			(!(*flags & DSI_CTRL_CMD_BROADCAST_MASTER)))
+	if (!(*flags & DSI_CTRL_CMD_BROADCAST_MASTER))
 		dsi_ctrl_clear_slave_dma_status(dsi_ctrl, *flags);
 #else
 	if ((!(*flags & DSI_CTRL_CMD_BROADCAST_MASTER)) && (no_clear_slave_dma == 0))
@@ -2211,58 +2205,6 @@ static int dsi_ctrl_dts_parse(struct dsi_ctrl *dsi_ctrl,
 	return 0;
 }
 
-#ifdef CONFIG_UIO
-static void uio_init(struct platform_device *pdev)
-{
-	struct uio_info *uio_reg_info = NULL;
-	struct resource *clnt_res = NULL;
-	int ret = 0;
-	u32 mem_size = 0;
-	phys_addr_t mem_pyhsical = 0;
-
-	clnt_res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "disp_conf");
-	if (!clnt_res) {
-		pr_debug("resource not found\n");
-		return;
-	}
-
-	mem_size = resource_size(clnt_res);
-	if (mem_size == 0) {
-		pr_debug("resource memory size is zero\n");
-		goto exit;
-	}
-
-	uio_reg_info = devm_kzalloc(&pdev->dev, sizeof(struct uio_info),
-			GFP_KERNEL);
-	if (!uio_reg_info)
-		goto exit;
-
-	mem_pyhsical = clnt_res->start;
-
-	/* Setup device */
-	uio_reg_info->name = clnt_res->name;
-	uio_reg_info->version = "1.0";
-	uio_reg_info->mem[0].addr = mem_pyhsical;
-	uio_reg_info->mem[0].size = mem_size;
-	uio_reg_info->mem[0].memtype = UIO_MEM_PHYS;
-
-	ret = uio_register_device(&pdev->dev, uio_reg_info);
-	if (ret) {
-		pr_debug("uio register failed. ret:%d\n", ret);
-		goto exit;
-	}
-
-	pr_debug("Device file created for dsi_ctrl config.\n");
-	return;
-exit:
-	pr_debug("Unable to get dsi_ctrl config.\n");
-}
-#else	/* CONFIG_UIO */
-static void uio_init(struct platform_device *pdev)
-{
-}
-#endif	/* CONFIG_UIO */
-
 static int dsi_ctrl_dev_probe(struct platform_device *pdev)
 {
 	struct dsi_ctrl *dsi_ctrl;
@@ -2342,9 +2284,6 @@ static int dsi_ctrl_dev_probe(struct platform_device *pdev)
 
 	dsi_ctrl->pdev = pdev;
 	platform_set_drvdata(pdev, dsi_ctrl);
-
-	uio_init(pdev);
-
 	DSI_CTRL_INFO(dsi_ctrl, "Probe successful\n");
 
 	return 0;
@@ -3068,6 +3007,7 @@ static irqreturn_t dsi_ctrl_isr(int irq, void *ptr)
 static int _dsi_ctrl_setup_isr(struct dsi_ctrl *dsi_ctrl)
 {
 	int irq_num, rc;
+	uint32_t intr_idx;
 
 	if (!dsi_ctrl)
 		return -EINVAL;
@@ -3078,6 +3018,19 @@ static int _dsi_ctrl_setup_isr(struct dsi_ctrl *dsi_ctrl)
 	init_completion(&dsi_ctrl->irq_info.vid_frame_done);
 	init_completion(&dsi_ctrl->irq_info.cmd_frame_done);
 	init_completion(&dsi_ctrl->irq_info.bta_done);
+
+	/* If there is unbalanced refcount for any interrupt, irq_stat_mask
+	* remain non zero on suspend. Due to this, enable_irq does not get
+	* called on resume, leading to ctrl ISR permanently disabled.
+	* This is a defensive check to recover from such scenario.
+	*/
+	for (intr_idx = 0; intr_idx < DSI_STATUS_INTERRUPT_COUNT; intr_idx++) {
+		if (dsi_ctrl->irq_info.irq_stat_refcount[intr_idx]) {
+			DSI_CTRL_ERR(dsi_ctrl, "refcount mismatch: intr_idx %d\n", intr_idx);
+			dsi_ctrl->irq_info.irq_stat_refcount[intr_idx] = 0;
+		}
+	}
+	dsi_ctrl->irq_info.irq_stat_mask = 0x0;
 
 	irq_num = platform_get_irq(dsi_ctrl->pdev, 0);
 	if (irq_num < 0) {
@@ -3189,8 +3142,6 @@ int dsi_ctrl_host_timing_update(struct dsi_ctrl *dsi_ctrl)
 		return -EINVAL;
 	}
 
-	mutex_lock(&dsi_ctrl->ctrl_lock);
-
 	if (dsi_ctrl->hw.ops.host_setup)
 		dsi_ctrl->hw.ops.host_setup(&dsi_ctrl->hw,
 				&dsi_ctrl->host_config.common_config);
@@ -3208,11 +3159,9 @@ int dsi_ctrl_host_timing_update(struct dsi_ctrl *dsi_ctrl)
 				0x0, NULL);
 	} else {
 		DSI_CTRL_ERR(dsi_ctrl, "invalid panel mode for resolution switch\n");
-		mutex_unlock(&dsi_ctrl->ctrl_lock);
 		return -EINVAL;
 	}
 
-	mutex_unlock(&dsi_ctrl->ctrl_lock);
 	return 0;
 }
 
