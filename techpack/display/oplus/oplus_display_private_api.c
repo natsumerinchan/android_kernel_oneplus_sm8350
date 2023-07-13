@@ -90,6 +90,9 @@ int oplus_dsi_log_type = OPLUS_DEBUG_LOG_DISABLED;
 int dsi_cmd_panel_debug = 0;
 /*#endif*/
 
+uint64_t serial_number_fir = 0x0;
+uint64_t serial_number_sec = 0x0;
+
 struct touchpanel_event fp_state = {0};
 
 EXPORT_SYMBOL(oplus_dimlayer_bl_alpha);
@@ -152,7 +155,6 @@ bool is_dsi_panel(struct drm_crtc *crtc)
 	}
 
 	if (crtc != display->drm_conn->state->crtc) {
-		pr_err("failed to find dsi, panel name = %s display->panel->is_secondary = %d \n");
 		return false;
 	}
 
@@ -592,14 +594,38 @@ static ssize_t oplus_display_set_hbm(struct kobject *obj,
 	return count;
 }
 
+static int lock_panel_register(struct dsi_panel *panel, bool lock)
+{
+	char value0[] = {0x5A, 0x5A};
+	char value1[] = {0xA5, 0xA5};
+
+	if (!panel) {
+		pr_err("%s, Invalid params\n", __func__);
+		return -1;
+	}
+
+	mutex_lock(&(panel->panel_lock));
+
+	if (dsi_panel_initialized(panel)) {
+		if (lock) {
+			mipi_dsi_dcs_write(&(panel->mipi_device), 0xF0, value1, sizeof(value1));
+		}
+		else {
+			mipi_dsi_dcs_write(&(panel->mipi_device), 0xF0, value0, sizeof(value0));
+		}
+	}
+
+	mutex_unlock(&(panel->panel_lock));
+
+	return 0;
+}
+
 static ssize_t oplus_display_set_seed(struct kobject *obj,
 		struct kobj_attribute *attr,
 		const char *buf, size_t count)
 {
 	int temp_save = 0;
 	char reg[10] = {0x0};
-	char value0[] = {0x5A, 0x5A};
-	char value1[] = {0xA5, 0xA5};
 	int i = 0;
 
 	sscanf(buf, "%du", &temp_save);
@@ -612,22 +638,25 @@ static ssize_t oplus_display_set_seed(struct kobject *obj,
 			printk(KERN_INFO "oplus_display_set_seed and main display is null");
 			return count;
 		}
-		for (i = 0;i < 5;i++) {
+		if (get_main_display()->panel->oplus_priv.seed_read_back_flag) {
+			for (i = 0;i < 5;i++) {
+				dsi_display_seed_mode(get_main_display(), seed_mode);
+				if (seed_mode == 0) {
+					break;
+				}
+				lock_panel_register(get_main_display()->panel, false);
+				is_set_seed = true;
+				dsi_display_read_panel_reg(get_main_display(), 0x62, reg, 4);
+				is_set_seed = false;
+				lock_panel_register(get_main_display()->panel, true);
+				printk(KERN_INFO "reg[0]:%x,reg[1]:%x,reg[2]:%x,reg[3]:%x\n", reg[0], reg[1], reg[2], reg[3]);
+				if (reg[1] == 0xb0) {
+					break;
+				}
+			}
+		} else {
 			dsi_display_seed_mode(get_main_display(), seed_mode);
-			if (seed_mode == 0 || strcmp(get_main_display()->panel->name, "samsung AMS643YE01 dsc cmd mode panel")) {
-				break;
-			}
-			mipi_dsi_dcs_write(&(get_main_display()->panel->mipi_device), 0xF0, value0, sizeof(value0));
-			is_set_seed = true;
-			dsi_display_read_panel_reg(get_main_display(), 0x62, reg, 4);
-			is_set_seed = false;
-			mipi_dsi_dcs_write(&(get_main_display()->panel->mipi_device), 0xF0, value1, sizeof(value1));
-			printk(KERN_INFO "reg[0]:%x,reg[1]:%x,reg[2]:%x,reg[3]:%x\n", reg[0], reg[1], reg[2], reg[3]);
-			if (reg[1] == 0xb0) {
-				break;
-			}
 		}
-
 	} else {
 		printk(KERN_ERR
 		       "%s oplus_display_set_seed = %d, but now display panel status is not on\n",
@@ -796,6 +825,7 @@ static ssize_t oplus_display_get_dither(struct kobject *obj,
 	return sprintf(buf, "%d\n", dither_enable);
 }
 
+
 static ssize_t oplus_display_regulator_control(struct kobject *obj,
 		struct kobj_attribute *attr,
 		const char *buf, size_t count)
@@ -829,7 +859,7 @@ static ssize_t oplus_display_set_panel_serial_number(struct kobject *obj,
 		const char *buf, size_t count)
 {
 	sscanf(buf, "%x", &oplus_display_id);
-
+	pr_info("%s oplus_display_id=%d\n", __func__, oplus_display_id);
 	return count;
 }
 
@@ -845,14 +875,15 @@ static ssize_t oplus_display_get_panel_serial_number(struct kobject *obj,
 	uint64_t serial_number;
 	struct dsi_display *display = get_main_display();
 	int i;
+	int cur_panel_id = 0;
 
-	if (!display) {
+	if (!display || !display->panel) {
 		printk(KERN_INFO
-		       "oplus_display_get_panel_serial_number and main display is null");
+			"oplus_display_get_panel_serial_number and main display is null");
 		return -1;
 	}
 
-	if (0 == oplus_display_id && display->enabled == false) {
+	if ((0 == oplus_display_id) && (display->enabled == false)) {
 		pr_err("%s main panel is disabled", __func__);
 		return -1;
 	}
@@ -868,6 +899,7 @@ static ssize_t oplus_display_get_panel_serial_number(struct kobject *obj,
 			pr_info("%s second panel is disabled", __func__);
 			return -1;
 		}
+		cur_panel_id = 1;
 	}
 
 	if (get_oplus_display_power_status() != OPLUS_DISPLAY_POWER_ON) {
@@ -876,10 +908,35 @@ static ssize_t oplus_display_get_panel_serial_number(struct kobject *obj,
 	}
 
 	/*
+	 * To fix bug id 5552142, we do not read serial number frequently.
+	 * First read, then return the saved value.
+	 */
+	if (1 == cur_panel_id) {
+		if (serial_number_sec != 0) {
+			ret = scnprintf(buf, PAGE_SIZE, "Get panel1 serial number: %llx\n",
+							serial_number_sec);
+			pr_info("%s read serial_number_sec 0x%x\n", __func__, serial_number_sec);
+			return ret;
+		}
+	} else {
+		if (serial_number_fir != 0) {
+			ret = scnprintf(buf, PAGE_SIZE, "Get panel0 serial number: %llx\n",
+							serial_number_fir);
+			pr_info("%s read serial_number_fir 0x%x\n", __func__, serial_number_fir);
+			return ret;
+		}
+	}
+
+	if (!display->panel->panel_initialized) {
+		printk(KERN_ERR"%s panel initialized = false\n", __func__);
+		return ret;
+	}
+
+	/*
 	 * for some unknown reason, the panel_serial_info may read dummy,
 	 * retry when found panel_serial_info is abnormal.
 	 */
-	for (i = 0; i < 10; i++) {
+	for (i = 0; i < 5; i++) {
 		if (!strcmp(display->panel->name, "samsung amb655x fhd cmd mode dsc dsi panel")
 			|| !strcmp(display->panel->name, "samsung SOFE03F dsc cmd mode panel")) {
 			ret = dsi_display_read_panel_reg(get_main_display(), 0xA1, read, 18);
@@ -889,17 +946,15 @@ static ssize_t oplus_display_get_panel_serial_number(struct kobject *obj,
 			mutex_lock(&display->display_lock);
 			mutex_lock(&display->panel->panel_lock);
 
-			if (display->panel->panel_initialized) {
-				if (display->config.panel_mode == DSI_OP_CMD_MODE) {
-					dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_ON);
-				}
-			        {
-					char value[] = {0x5A, 0x5A};
-					ret = mipi_dsi_dcs_write(&display->panel->mipi_device, 0xF0, value, sizeof(value));
-				}
-				if (display->config.panel_mode == DSI_OP_CMD_MODE) {
-					dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_OFF);
-				}
+			if (display->config.panel_mode == DSI_OP_CMD_MODE) {
+				dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_ON);
+			}
+			 {
+				char value[] = {0x5A, 0x5A};
+				ret = mipi_dsi_dcs_write(&display->panel->mipi_device, 0xF0, value, sizeof(value));
+			 }
+			if (display->config.panel_mode == DSI_OP_CMD_MODE) {
+				dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_OFF);
 			}
 			mutex_unlock(&display->panel->panel_lock);
 			mutex_unlock(&display->display_lock);
@@ -909,23 +964,23 @@ static ssize_t oplus_display_get_panel_serial_number(struct kobject *obj,
 				msleep(20);
 				continue;
 			}
+			pr_info("%s read panel:%s\n", __func__, display->panel->oplus_priv.vendor_name);
 			ret = dsi_display_read_panel_reg(get_main_display(), 0xD8, read, 22);
 		} else if (!strcmp(display->panel->oplus_priv.vendor_name, "NT37701")) {
+				pr_info("%s read panel:%s\n", __func__, display->panel->oplus_priv.vendor_name);
 				ret = dsi_display_read_panel_reg(display, 0xA3, read, 8);
 		} else if (!strcmp(display->panel->oplus_priv.vendor_name, "NT37705")) {
 			char panel_info_page[] = { 0x55, 0xAA, 0x52, 0x8, 0x1 };
 
 			mutex_lock(&display->display_lock);
 			mutex_lock(&display->panel->panel_lock);
-			if (display->panel->panel_initialized) {
-				if (display->config.panel_mode == DSI_OP_CMD_MODE) {
-					dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_ON);
-				}
+			if (display->config.panel_mode == DSI_OP_CMD_MODE) {
+				dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_ON);
+			}
 
-				ret = mipi_dsi_dcs_write(&display->panel->mipi_device, 0xF0, panel_info_page, sizeof(panel_info_page));
-				if (display->config.panel_mode == DSI_OP_CMD_MODE) {
-					dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_OFF);
-				}
+			ret = mipi_dsi_dcs_write(&display->panel->mipi_device, 0xF0, panel_info_page, sizeof(panel_info_page));
+			if (display->config.panel_mode == DSI_OP_CMD_MODE) {
+				dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_OFF);
 			}
 			mutex_unlock(&display->panel->panel_lock);
 			mutex_unlock(&display->display_lock);
@@ -1015,6 +1070,12 @@ static ssize_t oplus_display_get_panel_serial_number(struct kobject *obj,
 
 		ret = scnprintf(buf, PAGE_SIZE, "Get panel serial number: %llx\n",
 				serial_number);
+		/*Save serial_number value.*/
+		if (1 == cur_panel_id) {
+			serial_number_sec = serial_number;
+		} else {
+			serial_number_fir = serial_number;
+		}
 		break;
 	}
 
@@ -1506,11 +1567,17 @@ static ssize_t oplus_display_set_dsi_command(struct kobject *obj,
 	u32 old_dsi_command = oplus_dsi_command;
 	u32 packet_count = 0, size;
 	int rc = count, i;
-	char data[SZ_256];
+	char data[SZ_512] = "";
 	bool flush = false;
 
-	if(1 == dsi_cmd_panel_debug)
+	if (1 == dsi_cmd_panel_debug)
 		display = get_sec_display();
+
+	if (strlen(buf) >= SZ_512) {
+		pr_err("input buffer size[%d] is out of range[%d]\n",
+				strlen(buf), SZ_512);
+		return -ENOMEM;
+	}
 
 	if (!cmd_bufs) {
 		cmd_bufs = kmalloc(SZ_4K, GFP_KERNEL);
@@ -2130,7 +2197,6 @@ static ssize_t oplus_display_set_dimlayer_hbm(struct kobject *obj,
 	if (oplus_dimlayer_hbm_saved == value) {
 		return count;
 	}
-
 	if (get_oplus_display_power_status() == OPLUS_DISPLAY_POWER_ON) {
 
 		if (!dsi_connector || !dsi_connector->state || !dsi_connector->state->crtc) {
@@ -2155,7 +2221,7 @@ static ssize_t oplus_display_set_dimlayer_hbm(struct kobject *obj,
 
 #ifdef OPLUS_BUG_STABILITY
 	pr_err("debug for oplus_display_set_dimlayer_hbm set oplus_dimlayer_hbm = %d, oplus_dimlayer_hbm_saved = %d\n",
-		oplus_dimlayer_hbm, oplus_dimlayer_hbm_saved);
+	       oplus_dimlayer_hbm, oplus_dimlayer_hbm_saved);
 #endif
 
 	return count;
@@ -2806,6 +2872,8 @@ int dsi_display_oplus_set_power(struct drm_connector *connector,
 
 	if (power_mode == SDE_MODE_DPMS_OFF)
 		atomic_set(&display->panel->esd_pending, 1);
+	else if (power_mode == SDE_MODE_DPMS_LP1)
+		atomic_set(&display->panel->esd_pending, 0);
 
 	switch (power_mode) {
 	case SDE_MODE_DPMS_LP1:
@@ -2838,7 +2906,6 @@ int dsi_display_oplus_set_power(struct drm_connector *connector,
 			rc = dsi_panel_set_lp2(display->panel);
 			set_oplus_display_scene(OPLUS_DISPLAY_AOD_SCENE);
 			break;
-
 
 		case OPLUS_DISPLAY_AOD_SCENE:
 		default:

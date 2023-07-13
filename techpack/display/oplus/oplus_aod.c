@@ -13,7 +13,7 @@
 #include "dsi_defs.h"
 #include "sde_crtc.h"
 #include "oplus_aod.h"
-int aod_light_mode = 1;
+int aod_light_mode = 0;
 DEFINE_MUTEX(oplus_aod_light_mode_lock);
 
 int __oplus_display_set_aod_light_mode(int mode)
