@@ -290,7 +290,7 @@ void cnss_request_pm_qos(struct device *dev, u32 qos_val)
 	if (!plat_priv)
 		return;
 
-	pm_qos_add_request(&plat_priv->qos_request, PM_QOS_CPU_DMA_LATENCY,
+	cpu_latency_qos_add_request(&plat_priv->qos_request, 
 			   qos_val);
 }
 EXPORT_SYMBOL(cnss_request_pm_qos);
@@ -302,7 +302,7 @@ void cnss_remove_pm_qos(struct device *dev)
 	if (!plat_priv)
 		return;
 
-	pm_qos_remove_request(&plat_priv->qos_request);
+	cpu_latency_qos_remove_request(&plat_priv->qos_request);
 }
 EXPORT_SYMBOL(cnss_remove_pm_qos);
 
