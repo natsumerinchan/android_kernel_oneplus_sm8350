@@ -483,10 +483,10 @@ static void oplus_voocphy_pm_qos_update(int new_value)
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0))
 	static int last_value = 0;
 
-	if (!pm_qos_request_active(&pm_qos_req)) {
-		pm_qos_add_request(&pm_qos_req, PM_QOS_CPU_DMA_LATENCY, new_value);
+	if (!cpu_latency_qos_request_active(&pm_qos_req)) {
+		cpu_latency_qos_add_request(&pm_qos_req, new_value);
 	} else {
-		pm_qos_update_request(&pm_qos_req, new_value);
+		cpu_latency_qos_update_request(&pm_qos_req, new_value);
 	}
 
 	if (last_value != new_value) {
@@ -5501,9 +5501,9 @@ void oplus_voocphy_reset_fastchg_after_usbout(void)
 		voocphy_info("oplus_voocphy_set_chg_auto_mode  false");
 	}
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0))
-	if (pm_qos_request_active(&pm_qos_req)) {
-		pm_qos_update_request(&pm_qos_req, PM_QOS_DEFAULT_VALUE);
-		voocphy_info("pm_qos_remove_request after usbout");
+	if (cpu_latency_qos_request_active(&pm_qos_req)) {
+		cpu_latency_qos_update_request(&pm_qos_req, PM_QOS_DEFAULT_VALUE);
+		voocphy_info("cpu_latency_qos_remove_request after usbout");
 	}
 #else
 	if (cpu_latency_qos_request_active(&pm_qos_req)) {
@@ -6549,8 +6549,8 @@ void oplus_voocphy_switch_fast_chg(void)
 			chg_err(" fastchg_allow false, to_warm true, don't switch to vooc mode\n");
 		} else {
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0))
-			if (!pm_qos_request_active(&pm_qos_req)) {
-				pm_qos_add_request(&pm_qos_req, PM_QOS_CPU_DMA_LATENCY, 1000);
+			if (!cpu_latency_qos_request_active(&pm_qos_req)) {
+				cpu_latency_qos_add_request(&pm_qos_req, 1000);
 			}
 #else
 			if (!cpu_latency_qos_request_active(&pm_qos_req)) {

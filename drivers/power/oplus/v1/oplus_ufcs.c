@@ -94,11 +94,11 @@ static void oplus_ufcs_pm_qos_update(int new_value)
 		return;
 	}
 
-	if (!pm_qos_request_active(&ufcs_pm_qos_req))
-		pm_qos_add_request(&ufcs_pm_qos_req, PM_QOS_CPU_DMA_LATENCY,
+	if (!cpu_latency_qos_request_active(&ufcs_pm_qos_req))
+		cpu_latency_qos_add_request(&ufcs_pm_qos_req,
 				   new_value);
 	else
-		pm_qos_update_request(&ufcs_pm_qos_req, new_value);
+		cpu_latency_qos_update_request(&ufcs_pm_qos_req, new_value);
 
 	if (last_value != new_value) {
 		last_value = new_value;
