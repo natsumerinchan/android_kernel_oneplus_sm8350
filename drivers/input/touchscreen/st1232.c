@@ -126,7 +126,7 @@ static irqreturn_t st1232_ts_irq_handler(int irq, void *dev_id)
 	if (!count) {
 		input_mt_sync(input_dev);
 		if (ts->low_latency_req.dev) {
-			dev_pm_qos_remove_request(&ts->low_latency_req);
+			dev_cpu_latency_qos_remove_request(&ts->low_latency_req);
 			ts->low_latency_req.dev = NULL;
 		}
 	} else if (!ts->low_latency_req.dev) {
