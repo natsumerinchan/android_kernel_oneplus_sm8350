@@ -5627,13 +5627,13 @@ static void aw8697_pm_qos_enable(struct aw8697 *aw8697, bool enabled)
 {
 	mutex_lock(&aw8697->qos_lock);
 	if (enabled) {
-		if (!pm_qos_request_active(&pm_qos_req_vb)) {
-			pm_qos_add_request(&pm_qos_req_vb, PM_QOS_CPU_DMA_LATENCY, PM_QOS_VALUE_VB);
+		if (!cpu_latency_qos_request_active(&pm_qos_req_vb)) {
+			cpu_latency_qos_add_request(&pm_qos_req_vb, PM_QOS_VALUE_VB);
 		} else {
-			pm_qos_update_request(&pm_qos_req_vb, PM_QOS_VALUE_VB);
+			cpu_latency_qos_update_request(&pm_qos_req_vb, PM_QOS_VALUE_VB);
 		}
 	} else {
-		pm_qos_update_request(&pm_qos_req_vb, PM_QOS_DEFAULT_VALUE);
+		cpu_latency_qos_update_request(&pm_qos_req_vb, PM_QOS_DEFAULT_VALUE);
 	}
 	mutex_unlock(&aw8697->qos_lock);
 }

@@ -2640,7 +2640,7 @@ static int rtp_osc_cali(struct aw_haptic *aw_haptic)
 	/* haptic go */
 	aw_haptic->func->play_go(aw_haptic, true);
 	/* require latency of CPU & DMA not more then AW_PM_QOS_VALUE_VB us */
-	pm_qos_add_request(&aw_pm_qos_req_vb, PM_QOS_CPU_DMA_LATENCY,
+	cpu_latency_qos_add_request(&aw_pm_qos_req_vb,
 			   AW_PM_QOS_VALUE_VB);
 	while (1) {
 		if (!aw_haptic->func->rtp_get_fifo_afs(aw_haptic)) {
@@ -2682,7 +2682,7 @@ static int rtp_osc_cali(struct aw_haptic *aw_haptic)
 			break;
 		}
 	}
-	pm_qos_remove_request(&aw_pm_qos_req_vb);
+	cpu_latency_qos_remove_request(&aw_pm_qos_req_vb);
 	enable_irq(gpio_to_irq(aw_haptic->irq_gpio));
 	aw_haptic->microsecond = ktime_to_us(ktime_sub(aw_haptic->kend,
 						       aw_haptic->kstart));
@@ -2759,17 +2759,16 @@ static void aw_pm_qos_enable(struct aw_haptic *aw_haptic, bool enabled)
 {
 	mutex_lock(&aw_haptic->qos_lock);
 	if (enabled) {
-		if (!pm_qos_request_active(&aw_pm_qos_req_vb))
-			pm_qos_add_request(&aw_pm_qos_req_vb,
-					   PM_QOS_CPU_DMA_LATENCY,
+		if (!cpu_latency_qos_request_active(&aw_pm_qos_req_vb))
+			cpu_latency_qos_add_request(&aw_pm_qos_req_vb,
 					   AW_PM_QOS_VALUE_VB);
 		else
-			pm_qos_update_request(&aw_pm_qos_req_vb,
+			cpu_latency_qos_update_request(&aw_pm_qos_req_vb,
 					      AW_PM_QOS_VALUE_VB);
 
 	} else {
-		pm_qos_remove_request(&aw_pm_qos_req_vb);
-		/* pm_qos_update_request(&aw_pm_qos_req_vb, PM_QOS_DEFAULT_VALUE); */
+		cpu_latency_qos_remove_request(&aw_pm_qos_req_vb);
+		/* cpu_latency_qos_update_request(&aw_pm_qos_req_vb); */
 	}
 	mutex_unlock(&aw_haptic->qos_lock);
 }
