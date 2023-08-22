@@ -8,4 +8,5 @@ subdir-y += oplus/porsche
 else
 subdir-y += oplus/lemonadev
 subdir-y += oplus/martini
+subdir-y += oplus/oscar
 endif
