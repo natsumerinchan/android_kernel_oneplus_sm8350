@@ -22,6 +22,7 @@
 #include "sia8152s_regs.h"
 
 #define SIA8152S_WRITEABLE_REG_NUM			(5)
+#define reg_num		(ARRAY_SIZE(trimming_regs))
 
 static const char sia8152s_palyback_defaults[][SIA8152S_WRITEABLE_REG_NUM] = {
 	[SIA81XX_CHANNEL_L] = {
@@ -287,7 +288,6 @@ void sia8152s_check_trimming(
 	struct regmap *regmap)
 {
 	int i = 0;
-	const uint32_t reg_num = ARRAY_SIZE(trimming_regs);
 	uint8_t vals[reg_num] = {0};
 	uint8_t crc = 0;
 
