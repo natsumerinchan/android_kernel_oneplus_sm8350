@@ -1251,6 +1251,8 @@ static void bolero_soc_codec_remove(struct snd_soc_component *component)
 
 	return;
 }
+
+
 #ifdef OPLUS_ARCH_EXTENDS
 static const char * const bolero_reg_dump_text[] = {
 	"ALL",
@@ -1457,25 +1459,44 @@ static int bolero_probe(struct platform_device *pdev)
 	lpass_core_hw_vote = devm_clk_get(&pdev->dev, "lpass_core_hw_vote");
 	if (IS_ERR(lpass_core_hw_vote)) {
 		ret = PTR_ERR(lpass_core_hw_vote);
+		#ifndef OPLUS_BUG_STABILITY
 		dev_dbg(&pdev->dev, "%s: clk get %s failed %d\n",
 			__func__, "lpass_core_hw_vote", ret);
+		#else /* OPLUS_BUG_STABILITY */
+		dev_err(&pdev->dev, "%s: clk get %s failed %d\n",
+			__func__, "lpass_core_hw_vote", ret);
+		#endif /* OPLUS_BUG_STABILITY */
 		lpass_core_hw_vote = NULL;
 		ret = 0;
 	}
 	priv->lpass_core_hw_vote = lpass_core_hw_vote;
 
+	#ifdef OPLUS_BUG_STABILITY
+	dev_err(&pdev->dev, "%s:lpass_core_hw_vote obtained %p\n", __func__, lpass_core_hw_vote);
+	#endif /* OPLUS_BUG_STABILITY */
 	/* Register LPASS audio hw vote */
 	lpass_audio_hw_vote = devm_clk_get(&pdev->dev, "lpass_audio_hw_vote");
 	if (IS_ERR(lpass_audio_hw_vote)) {
 		ret = PTR_ERR(lpass_audio_hw_vote);
+		#ifndef OPLUS_BUG_STABILITY
 		dev_dbg(&pdev->dev, "%s: clk get %s failed %d\n",
 			__func__, "lpass_audio_hw_vote", ret);
+		#else /* OPLUS_BUG_STABILITY */
+		dev_err(&pdev->dev, "%s: clk get %s failed %d\n",
+			__func__, "lpass_audio_hw_vote", ret);
+		#endif /* OPLUS_BUG_STABILITY */
 		lpass_audio_hw_vote = NULL;
 		ret = 0;
 	}
 	priv->lpass_audio_hw_vote = lpass_audio_hw_vote;
+	#ifdef OPLUS_BUG_STABILITY
+	dev_err(&pdev->dev, "%s:lpass_audio_hw_vote obtained %p\n", __func__, lpass_audio_hw_vote);
+	#endif /* OPLUS_BUG_STABILITY */
 
 	schedule_work(&priv->bolero_add_child_devices_work);
+	#ifdef OPLUS_BUG_STABILITY
+	dev_err(&pdev->dev, "%s:Schedule work done to add child devices\n", __func__);
+	#endif /* OPLUS_BUG_STABILITY */
 	return 0;
 }
 
@@ -1501,9 +1522,16 @@ int bolero_runtime_resume(struct device *dev)
 	int ret = 0;
 	static DEFINE_RATELIMIT_STATE(rtl, 1 * HZ, 1);
 
+	#ifdef OPLUS_BUG_STABILITY
+	dev_err(dev, "%s: Entered\n", __func__);
+	#endif /* OPLUS_BUG_STABILITY */
 	mutex_lock(&priv->vote_lock);
 	if (priv->lpass_core_hw_vote == NULL) {
+		#ifndef OPLUS_BUG_STABILITY
 		dev_dbg(dev, "%s: Invalid lpass core hw node\n", __func__);
+		#else /* OPLUS_BUG_STABILITY */
+		dev_err(dev, "%s: Invalid lpass core hw node\n", __func__);
+		#endif /* OPLUS_BUG_STABILITY */
 		goto audio_vote;
 	}
 
@@ -1516,10 +1544,16 @@ int bolero_runtime_resume(struct device *dev)
 		}
 	}
 	priv->core_hw_vote_count++;
+	pr_debug("%s: hw vote count %d\n",
+		__func__, priv->core_hw_vote_count);
 
 audio_vote:
 	if (priv->lpass_audio_hw_vote == NULL) {
+		#ifndef OPLUS_BUG_STABILITY
 		dev_dbg(dev, "%s: Invalid lpass audio hw node\n", __func__);
+		#else /* OPLUS_BUG_STABILITY */
+		dev_err(dev, "%s: Invalid lpass audio hw node\n", __func__);
+		#endif /* OPLUS_BUG_STABILITY */
 		goto done;
 	}
 

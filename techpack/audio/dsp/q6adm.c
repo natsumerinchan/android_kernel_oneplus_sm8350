@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -25,6 +25,11 @@
 #include <linux/proc_fs.h>
 #include "../asoc/msm-qti-pp-config.h"
 #endif /* OPLUS_FEATURE_AUDIODETECT */
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+#include "feedback/oplus_audio_kernel_fb.h"
+#include "dsp/oplus_lvve_err_fb.h"
+#endif
+
 
 #define TIMEOUT_MS 1000
 
@@ -56,9 +61,6 @@ enum adm_cal_status {
 	ADM_STATUS_MAX,
 };
 
-typedef int (*adm_cb)(uint32_t opcode, uint32_t token,
-		       uint32_t *pp_event_package, void *pvt);
-
 struct adm_copp {
 
 	atomic_t id[AFE_MAX_PORTS][MAX_COPPS_PER_PORT];
@@ -78,8 +80,6 @@ struct adm_copp {
 	uint32_t adm_delay[AFE_MAX_PORTS][MAX_COPPS_PER_PORT];
 	unsigned long adm_status[AFE_MAX_PORTS][MAX_COPPS_PER_PORT];
 	atomic_t token[AFE_MAX_PORTS][MAX_COPPS_PER_PORT];
-	adm_cb cb;
-	void *priv[AFE_MAX_PORTS][MAX_COPPS_PER_PORT][MAX_FE_ID];
 };
 
 struct source_tracking_data {
@@ -197,93 +197,6 @@ static int adm_arrange_mch_map_v8(
 		int channel_mode,
 		int port_idx);
 
-static uint32_t adm_pp_raise_event_opcode[] = {
-		ADM_PP_EVENT };
-
-int q6adm_send_event_register_cmd(int port_id, int copp_idx, u8 *data,
-					int param_size, int opcode)
-{
-	struct adm_register_event *adm_reg_params = NULL;
-	int ret = 0, port_idx = 0, sz = 0;
-
-	port_id = afe_convert_virtual_to_portid(port_id);
-	port_idx = adm_validate_and_get_port_index(port_id);
-	if (port_idx < 0) {
-		pr_err("%s: Invalid port_id %#x\n", __func__, port_id);
-		return -EINVAL;
-	}
-
-	sz = sizeof(struct apr_hdr) + param_size;
-	adm_reg_params = kzalloc(sz, GFP_KERNEL);
-
-	if (!adm_reg_params)
-		return -ENOMEM;
-
-	memcpy(adm_reg_params->payload, data, param_size);
-
-	adm_reg_params->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
-				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
-	adm_reg_params->hdr.src_svc = APR_SVC_ADM;
-	adm_reg_params->hdr.src_domain = APR_DOMAIN_APPS;
-	adm_reg_params->hdr.src_port = port_id;
-	adm_reg_params->hdr.dest_svc = APR_SVC_ADM;
-	adm_reg_params->hdr.dest_domain = APR_DOMAIN_ADSP;
-	adm_reg_params->hdr.dest_port =
-			atomic_read(&this_adm.copp.id[port_idx][copp_idx]);
-	adm_reg_params->hdr.token = port_idx << 16 | copp_idx;
-	adm_reg_params->hdr.opcode = opcode;
-	adm_reg_params->hdr.pkt_size = sz;
-
-	atomic_set(&this_adm.copp.stat[port_idx][copp_idx], 0);
-	ret = apr_send_pkt(this_adm.apr, (uint32_t *)adm_reg_params);
-	if (ret < 0) {
-		pr_err("%s: Set adm register params failed port %d rc %d\n",
-				__func__, port_id, ret);
-		ret = -EINVAL;
-		goto fail_cmd;
-	}
-
-	ret = wait_event_timeout(this_adm.copp.wait[port_idx][copp_idx],
-			atomic_read(
-			&this_adm.copp.stat[port_idx][copp_idx]) >= 0,
-			msecs_to_jiffies(TIMEOUT_MS));
-	if (!ret) {
-		pr_err("%s: set params timed out port = %d\n",
-			__func__, port_id);
-		ret = -ETIMEDOUT;
-		goto fail_cmd;
-	}
-	ret = 0;
-fail_cmd:
-	kfree(adm_reg_params);
-
-	return ret;
-}
-EXPORT_SYMBOL(q6adm_send_event_register_cmd);
-
-
-static int is_adsp_adm_raise_event(uint32_t cmd)
-{
-	int i = 0;
-	for (i = 0; i < ARRAY_SIZE(adm_pp_raise_event_opcode); i++) {
-		if (cmd == adm_pp_raise_event_opcode[i])
-			return i;
-	}
-	return -EINVAL;
-}
-
-void q6adm_register_callback(void *cb)
-{
-	this_adm.copp.cb = cb;
-}
-EXPORT_SYMBOL(q6adm_register_callback);
-
-void q6adm_clear_callback(void)
-{
-	this_adm.copp.cb = NULL;
-}
-EXPORT_SYMBOL(q6adm_clear_callback);
-
 /**
  * adm_validate_and_get_port_index -
  *        validate given port id
@@ -360,7 +273,7 @@ int adm_set_auddet_enable_param(int port_id, uint8_t val)
 	}
 
 	memset(&param_hdr, 0, sizeof(param_hdr));
-	param_hdr.module_id = MUTE_DETECT_MODULE_ID;
+		param_hdr.module_id = MUTE_DETECT_MODULE_ID;
 	param_hdr.instance_id = INSTANCE_ID_0;
 	param_hdr.param_id = MUTE_DETECT_ENABLE_PARAM_ID;
 	param_hdr.param_size = sizeof(enable);
@@ -434,41 +347,41 @@ int adm_get_all_mute_pp_param_from_port(int port_id)
 						param_value);
 			pr_info("%s : mute_detect return param, ret: %d, mutedet = %d, zd = %d, pop = %d, clip = %d\n",__func__, ret, *(uint32_t *)param_value, *((uint32_t *)param_value + 1), *((uint32_t *)param_value + 2), *((uint32_t *)param_value + 3));
 			pr_info("%s : COPP: 0x%x\n",__func__, this_adm.copp.app_type[port_idx][idx]);
-			switch (atomic_read(&this_adm.copp.app_type[port_idx][idx])) {
-				case 0x11130:
-					pr_info("%s : update playback detection result\n",__func__);
-					general_playback_muted_cnt = *(uint32_t *)param_value;
-					general_playback_zd_cnt = *((uint32_t *)param_value + 1);
-					general_playback_pop_cnt = *((uint32_t *)param_value + 2);
-					general_playback_clip_cnt = *((uint32_t *)param_value + 3);
-					break;
-				case 0x11132:
-					pr_info("%s : update recording detection result\n",__func__);
-					general_record_muted_cnt = *(uint32_t *)param_value;
-					general_record_zd_cnt = *((uint32_t *)param_value + 1);
-					general_record_pop_cnt = *((uint32_t *)param_value + 2);
-					general_record_clip_cnt = *((uint32_t *)param_value + 3);
-					break;
-				case 0x1113a:
-					pr_info("%s : update VOIP detection result\n",__func__);
-					if (atomic_read(&this_adm.copp.session_type[port_idx][idx]) == SESSION_TYPE_RX) {
-						pr_info("%s : VOIP RX result\n",__func__);
-						voip_rx_muted_cnt = *(uint32_t *)param_value;
-						voip_rx_zd_cnt = *((uint32_t *)param_value + 1);
-						voip_rx_pop_cnt = *((uint32_t *)param_value + 2);
-						voip_rx_clip_cnt = *((uint32_t *)param_value + 3);
-					} else if (atomic_read(&this_adm.copp.session_type[port_idx][idx]) == SESSION_TYPE_TX) {
-						pr_info("%s : VOIP TX result\n",__func__);
-						voip_tx_muted_cnt = *(uint32_t *)param_value;
-						voip_tx_zd_cnt = *((uint32_t *)param_value + 1);
-						voip_tx_pop_cnt = *((uint32_t *)param_value + 2);
-						voip_tx_clip_cnt = *((uint32_t *)param_value + 3);
-					}
-					break;
-				default:
-					break;
-			}
-			memset(param_value, 0, param_size);
+				switch (atomic_read(&this_adm.copp.app_type[port_idx][idx])) {
+					case 0x11130:
+						pr_info("%s : update playback detection result\n",__func__);
+						general_playback_muted_cnt = *(uint32_t *)param_value;
+						general_playback_zd_cnt = *((uint32_t *)param_value + 1);
+						general_playback_pop_cnt = *((uint32_t *)param_value + 2);
+						general_playback_clip_cnt = *((uint32_t *)param_value + 3);
+						break;
+					case 0x11132:
+						pr_info("%s : update recording detection result\n",__func__);
+						general_record_muted_cnt = *(uint32_t *)param_value;
+						general_record_zd_cnt = *((uint32_t *)param_value + 1);
+						general_record_pop_cnt = *((uint32_t *)param_value + 2);
+						general_record_clip_cnt = *((uint32_t *)param_value + 3);
+						break;
+					case 0x1113a:
+						pr_info("%s : update VOIP detection result\n",__func__);
+						if (atomic_read(&this_adm.copp.session_type[port_idx][idx]) == SESSION_TYPE_RX) {
+							pr_info("%s : VOIP RX result\n",__func__);
+							voip_rx_muted_cnt = *(uint32_t *)param_value;
+							voip_rx_zd_cnt = *((uint32_t *)param_value + 1);
+							voip_rx_pop_cnt = *((uint32_t *)param_value + 2);
+							voip_rx_clip_cnt = *((uint32_t *)param_value + 3);
+						} else if (atomic_read(&this_adm.copp.session_type[port_idx][idx]) == SESSION_TYPE_TX) {
+							pr_info("%s : VOIP TX result\n",__func__);
+							voip_tx_muted_cnt = *(uint32_t *)param_value;
+							voip_tx_zd_cnt = *((uint32_t *)param_value + 1);
+							voip_tx_pop_cnt = *((uint32_t *)param_value + 2);
+							voip_tx_clip_cnt = *((uint32_t *)param_value + 3);
+						}
+						break;
+					default:
+						break;
+				}
+				memset(param_value, 0, param_size);
 		}
 	}
 
@@ -1204,12 +1117,24 @@ int adm_apr_send_pkt(void *data, wait_queue_head_t *wait,
 		} else	if (!ret) {
 			pr_err_ratelimited("%s: request timedout\n",
 				__func__);
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+			if (apr_get_q6_state() == APR_SUBSYS_LOADED) {
+				ratelimited_fb("payload@@q6adm.c:request timedout,ret=%d,port_idx=%d,copp_idx=%d,opcode=%d", \
+						ret, port_idx, copp_idx, opcode);
+			}
+#endif
 			ret = -ETIMEDOUT;
 		} else {
 			ret = 0;
 		}
 	} else if (ret == 0) {
 		pr_err("%s: packet not transmitted\n", __func__);
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+		if (apr_get_q6_state() == APR_SUBSYS_LOADED) {
+			ratelimited_fb("payload@@q6adm.c:packet not transmitted,ret=%d,port_idx=%d,copp_idx=%d,opcode=%d", \
+				ret, port_idx, copp_idx, opcode);
+		}
+#endif
 		/* apr_send_pkt can return 0 when nothing is transmitted */
 		ret = -EINVAL;
 	}
@@ -1833,11 +1758,8 @@ static int32_t adm_callback(struct apr_client_data *data, void *priv)
 {
 	uint32_t *payload;
 	int port_idx, copp_idx, idx, client_id;
-	uint32_t num_modules;
+	int num_modules;
 	int ret;
-	int payload_size = 0, i = 0;
-	struct msm_adsp_event_data *pp_event_package = NULL;
-	struct adm_usr_info usr_data = {0};
 
 	if (data == NULL) {
 		pr_err("%s: data parameter is null\n", __func__);
@@ -2009,13 +1931,6 @@ static int32_t adm_callback(struct apr_client_data *data, void *priv)
 					pr_err("%s: ADM get topo list error = %d\n",
 					       __func__, payload[1]);
 				break;
-			case ADM_CMD_REGISTER_EVENT:
-				pr_debug("%s:ADM_CMD_REGISTER_EVENT\n",
-					 __func__);
-				if (payload[1] != 0)
-					pr_err("%s: ADM_CMD_REGISTER_EVENT error = %d\n",
-					       __func__, payload[1]);
-				break;
 			default:
 				pr_err("%s: Unknown Cmd: 0x%x\n", __func__,
 								payload[0]);
@@ -2125,63 +2040,6 @@ static int32_t adm_callback(struct apr_client_data *data, void *priv)
 				   *payload);
 			atomic_set(&this_adm.adm_stat, 0);
 			wake_up(&this_adm.adm_wait);
-			break;
-		case ADM_PP_EVENT:
-			if (data->payload_size < (2 * sizeof(uint32_t))) {
-				pr_err("%s: payload has invalid size %d\n",
-					__func__, data->payload_size);
-				return -EINVAL;
-			}
-
-			pr_debug("%s: ADM_PP_EVENT payload[0][0x%x] payload[1][0x%x]\n",
-					 __func__, payload[0], payload[1]);
-
-			ret = is_adsp_adm_raise_event(data->opcode);
-
-			if (ret < 0)
-				return 0;
-
-			/*
-			 *  repack payload for adm_copp_pp_event
-			 *  package is composed of event type + size + payload
-			 */
-			payload_size = data->payload_size;
-			pp_event_package = kzalloc(payload_size
-					+ sizeof(struct msm_adsp_event_data)
-					, GFP_ATOMIC);
-
-			if (!pp_event_package)
-				return -ENOMEM;
-
-			pp_event_package->event_type = ret
-							+ ADSP_ADM_SERVICE_ID;
-			usr_data.service_id = ADSP_ADM_SERVICE_ID;
-			usr_data.token_coppidx = data->token;
-
-			pp_event_package->payload_len = data->payload_size +
-						sizeof(struct adm_usr_info);
-
-			memcpy((void *)pp_event_package->payload, &(usr_data),
-					sizeof(struct adm_usr_info));
-
-			memcpy((void *)pp_event_package->payload +
-					sizeof(struct adm_usr_info),
-					data->payload, data->payload_size);
-			if (this_adm.copp.cb) {
-				for (i = 0; i < MAX_FE_ID; i++) {
-					if (this_adm.copp.priv[port_idx]
-							[copp_idx][i]) {
-						pr_debug("%s: calling adm callback for feid %d port_idx %d copp_idx %d\n",
-								__func__, i, port_idx, copp_idx);
-						this_adm.copp.cb(data->opcode,
-						data->token,
-						(void *)pp_event_package,
-						this_adm.copp.priv[port_idx]
-						[copp_idx][i]);
-					}
-				}
-			}
-			kfree(pp_event_package);
 			break;
 		default:
 			pr_err("%s: Unknown cmd:0x%x\n", __func__,
@@ -3330,33 +3188,6 @@ static int adm_arrange_mch_ep2_map_v8(
 	return rc;
 }
 
-int q6adm_update_rtd_info(void *rtd, int port_id,
-		int copp_idx, int fe_id, int enable)
-{
-	int port_idx = 0;
-
-	port_id = q6audio_convert_virtual_to_portid(port_id);
-	port_idx = adm_validate_and_get_port_index(port_id);
-
-	if (port_idx < 0) {
-		pr_err("%s: Invalid port_id 0x%x\n", __func__, port_id);
-		return -EINVAL;
-	}
-
-	pr_debug("%s: port_id %#x copp_idx %d fe_id %d enable %d\n",
-			__func__, port_id, copp_idx, fe_id, enable);
-
-	if (enable) {
-		this_adm.copp.priv[port_idx][copp_idx][fe_id] = rtd;
-	}
-	else {
-		this_adm.copp.priv[port_idx][copp_idx][fe_id] = NULL;
-	}
-
-	return 0;
-}
-EXPORT_SYMBOL(q6adm_update_rtd_info);
-
 static int adm_copp_set_ec_ref_mfc_cfg_v2(int port_id, int copp_idx,
 					int sample_rate, int bps,
 					struct msm_pcm_channel_mixer *cfg)
@@ -4453,6 +4284,18 @@ int adm_close(int port_id, int perf_mode, int copp_idx)
 		pr_err("%s: Invalid copp idx: %d\n", __func__, copp_idx);
 		return -EINVAL;
 	}
+
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+	if ((atomic_read(&this_adm.copp.app_type[port_idx][copp_idx]) == VOICE_OR_VOIP_APP_TYPE) && \
+		((atomic_read(&this_adm.copp.topology[port_idx][copp_idx]) == VOICE_TOPOLOGY_LVVEFQ_TX_SM) || \
+			(atomic_read(&this_adm.copp.topology[port_idx][copp_idx]) == VOICE_TOPOLOGY_LVVEFQ_TX_DM) || \
+			(atomic_read(&this_adm.copp.topology[port_idx][copp_idx]) == VOICE_TOPOLOGY_LVVEFQ_TX_QM) || \
+			(atomic_read(&this_adm.copp.topology[port_idx][copp_idx]) == VOICE_TOPOLOGY_LVVEFQ_RX) || \
+			(atomic_read(&this_adm.copp.topology[port_idx][copp_idx]) == AUDIO_TOPOLOGY_LVVEFQ_RX))
+		) {
+		oplus_adm_get_lvve_err_fb(port_id, copp_idx);
+	}
+#endif
 
 	port_channel_map[port_idx].set_channel_map = false;
 	app_type = atomic_read(&this_adm.copp.app_type[port_idx][copp_idx]);
@@ -6293,6 +6136,10 @@ static ssize_t pb_det_read(struct file *file,
 	int ret = 0;
 
 	str = kmalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!str) {
+		pr_err("Allocation failed\n");
+		return -ENOMEM;
+	}
 
 	//ret = adm_get_all_mute_pp_param();
 

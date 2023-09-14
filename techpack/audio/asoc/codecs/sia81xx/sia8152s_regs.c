@@ -11,7 +11,7 @@
  * GNU General Public License for more details.
  */
 
-#define DEBUG
+/*#define DEBUG*/
 #define LOG_FLAG	"sia8152s_regs"
 
 
@@ -288,7 +288,7 @@ void sia8152s_check_trimming(
 {
 	int i = 0;
 	const uint32_t reg_num = ARRAY_SIZE(trimming_regs);
-	uint8_t vals[1024] = {0};
+	uint8_t vals[reg_num] = {0};
 	uint8_t crc = 0;
 
 	/* wait reading trimming data to reg */

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/irq.h>
@@ -28,6 +28,9 @@
 #include <dsp/digital-cdc-rsc-mgr.h>
 #include "swr-mstr-ctrl.h"
 #include "swr-slave-port-config.h"
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+#include "feedback/oplus_audio_kernel_fb.h"
+#endif
 
 #define SWR_NUM_PORTS    4 /* TODO - Get this info from DT */
 
@@ -134,6 +137,9 @@ static u32 swr_master_read(struct swr_mstr_ctrl *swrm, unsigned int reg_addr);
 static void swr_master_write(struct swr_mstr_ctrl *swrm, u16 reg_addr, u32 val);
 static int swrm_runtime_resume(struct device *dev);
 static void swrm_wait_for_fifo_avail(struct swr_mstr_ctrl *swrm, int swrm_rd_wr);
+#ifdef OPLUS_BUG_STABILITY
+static int swrm_master_init(struct swr_mstr_ctrl *swrm);
+#endif /* OPLUS_BUG_STABILITY */
 
 static u8 swrm_get_device_id(struct swr_mstr_ctrl *swrm, u8 devnum)
 {
@@ -862,9 +868,17 @@ static void swrm_wait_for_fifo_avail(struct swr_mstr_ctrl *swrm, int swrm_rd_wr)
 					break;
 			}
 		}
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+		if (fifo_outstanding_cmd == 0) {
+			dev_err_ratelimited(swrm->dev,
+					"%s err read underflow\n", __func__);
+			ratelimited_fb("payload@@%s %s:err read underflow", dev_driver_string(swrm->dev), dev_name(swrm->dev));
+		}
+#else
 		if (fifo_outstanding_cmd == 0)
 			dev_err_ratelimited(swrm->dev,
 					"%s err read underflow\n", __func__);
+#endif
 	} else {
 		/* Check for fifo overflow during write */
 		/* Check no of outstanding commands in fifo before write */
@@ -882,9 +896,17 @@ static void swrm_wait_for_fifo_avail(struct swr_mstr_ctrl *swrm, int swrm_rd_wr)
 					break;
 			}
 		}
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+		if (fifo_outstanding_cmd == swrm->wr_fifo_depth) {
+			dev_err_ratelimited(swrm->dev,
+					"%s err write overflow\n", __func__);
+			ratelimited_fb("payload@@%s %s:err write overflow", dev_driver_string(swrm->dev), dev_name(swrm->dev));
+		}
+#else
 		if (fifo_outstanding_cmd == swrm->wr_fifo_depth)
 			dev_err_ratelimited(swrm->dev,
 					"%s err write overflow\n", __func__);
+#endif
 	}
 }
 
@@ -939,6 +961,12 @@ retry_read:
 				rcmd_id: 0x%x, dev_num: 0x%x, cmd_data: 0x%x\n",
 				__func__, reg_addr, cmd_id, swrm->rcmd_id,
 				dev_addr, *cmd_data);
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+			ratelimited_fb("payload@@%s %s:read failed,reg=0x%x,cmd_id=0x%x,"
+				"rcmd_id=0x%x,dev_num=0x%x,cmd_data=0x%x",
+				dev_driver_string(swrm->dev), dev_name(swrm->dev),
+				reg_addr, cmd_id, swrm->rcmd_id, dev_addr, *cmd_data);
+#endif
 
 			dev_err_ratelimited(swrm->dev,
 				"%s: failed to read fifo\n", __func__);
@@ -1738,8 +1766,6 @@ static int swrm_slvdev_datapath_control(struct swr_master *master, bool enable)
 		dev_dbg(&master->dev, "%s: pm_runtime auto suspend triggered\n",
 			__func__);
 		pm_runtime_mark_last_busy(swrm->dev);
-		if (!enable)
-			pm_runtime_set_autosuspend_delay(swrm->dev, 80);
 		pm_runtime_put_autosuspend(swrm->dev);
 	}
 exit:
@@ -2002,6 +2028,9 @@ static irqreturn_t swr_mstr_interrupt(int irq, void *dev)
 	struct swr_device *swr_dev;
 	struct swr_master *mstr = &swrm->master;
 	int retry = 5;
+	#ifdef OPLUS_BUG_STABILITY
+	int mcp_slv_status;
+	#endif /* OPLUS_BUG_STABILITY */
 
 	if (unlikely(swrm_lock_sleep(swrm) == false)) {
 		dev_err(swrm->dev, "%s Failed to hold suspend\n", __func__);
@@ -2020,6 +2049,10 @@ static irqreturn_t swr_mstr_interrupt(int irq, void *dev)
 	ret = swrm_clk_request(swrm, true);
 	if (ret) {
 		dev_err(dev, "%s: swrm clk failed\n", __func__);
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+		ratelimited_fb("payload@@%s %s:swrm clk failed,ret=%d",
+			dev_driver_string(dev), dev_name(dev), ret);
+#endif
 		ret = IRQ_NONE;
 		goto err_audio_core_vote;
 	}
@@ -2127,12 +2160,20 @@ handle_irq:
 			dev_err(swrm->dev,
 				"%s: SWR read FIFO overflow fifo status %x\n",
 				__func__, value);
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+			ratelimited_fb("payload@@%s %s:SWR read FIFO overflow fifo status 0x%x",
+				dev_driver_string(swrm->dev), dev_name(swrm->dev), value);
+#endif
 			break;
 		case SWRM_INTERRUPT_STATUS_RD_FIFO_UNDERFLOW:
 			value = swr_master_read(swrm, SWRM_CMD_FIFO_STATUS);
 			dev_err(swrm->dev,
 				"%s: SWR read FIFO underflow fifo status %x\n",
 				__func__, value);
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+			ratelimited_fb("payload@@%s %s:SWR read FIFO underflow fifo status 0x%x",
+				dev_driver_string(swrm->dev), dev_name(swrm->dev), value);
+#endif
 			break;
 		case SWRM_INTERRUPT_STATUS_WR_CMD_FIFO_OVERFLOW:
 			value = swr_master_read(swrm, SWRM_CMD_FIFO_STATUS);
@@ -2140,13 +2181,36 @@ handle_irq:
 				"%s: SWR write FIFO overflow fifo status %x\n",
 				__func__, value);
 			swr_master_write(swrm, SWRM_CMD_FIFO_CMD, 0x1);
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+			ratelimited_fb("payload@@%s %s:SWR write FIFO overflow fifo status 0x%x",
+				dev_driver_string(swrm->dev), dev_name(swrm->dev), value);
+#endif
 			break;
 		case SWRM_INTERRUPT_STATUS_CMD_ERROR:
 			value = swr_master_read(swrm, SWRM_CMD_FIFO_STATUS);
 			dev_err_ratelimited(swrm->dev,
 			"%s: SWR CMD error, fifo status 0x%x, flushing fifo\n",
 					__func__, value);
+			#ifndef OPLUS_BUG_STABILITY
 			swr_master_write(swrm, SWRM_CMD_FIFO_CMD, 0x1);
+			#else /* OPLUS_BUG_STABILITY */
+			mcp_slv_status = swr_master_read(swrm, SWRM_MCP_SLV_STATUS);
+			if (!mcp_slv_status && (value & 0x40)) {
+				/* Slave is not enumerated and fifo status gives nack */
+				pr_err("%s: do soft reset for swr when enumeration lost during cmd error.\n",
+						__func__);
+				swr_master_write(swrm, SWRM_CMD_FIFO_CMD, 0x1);
+				swr_master_write(swrm, SWRM_COMP_SW_RESET, 0x01);
+				swrm_master_init(swrm);
+				/* wait for hw enumeration to complete */
+				usleep_range(100, 105);
+			} else
+				swr_master_write(swrm, SWRM_CMD_FIFO_CMD, 0x1);
+			#endif /* OPLUS_BUG_STABILITY */
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+			ratelimited_fb("payload@@%s %s:SWR CMD error, fifo status 0x%x, flushing fifo",
+				dev_driver_string(swrm->dev), dev_name(swrm->dev), value);
+#endif
 			break;
 		case SWRM_INTERRUPT_STATUS_DOUT_PORT_COLLISION:
 			dev_err_ratelimited(swrm->dev,
@@ -2155,6 +2219,10 @@ handle_irq:
 			swrm->intr_mask &= ~SWRM_INTERRUPT_STATUS_DOUT_PORT_COLLISION;
 			swr_master_write(swrm,
 				SWRM_CPU1_INTERRUPT_EN, swrm->intr_mask);
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+			ratelimited_fb("payload@@%s %s:SWR Port collision detected",
+				dev_driver_string(swrm->dev), dev_name(swrm->dev));
+#endif
 			break;
 		case SWRM_INTERRUPT_STATUS_READ_EN_RD_VALID_MISMATCH:
 			dev_dbg(swrm->dev,
@@ -2199,7 +2267,11 @@ handle_irq:
 				dev_err_ratelimited(swrm->dev,
 					"%s: SWR wokeup during clock stop\n",
 					__func__);
-				/* It might be possible the slave device gets reset
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+				ratelimited_fb("payload@@%s %s:SWR wokeup during clock stop, state=%d",
+					dev_driver_string(swrm->dev), dev_name(swrm->dev), swrm->state);
+#endif
+				/* It might be possible the slave device gets
 				 * reset and slave interrupt gets missed. So
 				 * re-enable Host IRQ and process slave pending
 				 * interrupts, if any.
@@ -2850,7 +2922,6 @@ static int swrm_probe(struct platform_device *pdev)
 	mutex_init(&swrm->clklock);
 	mutex_init(&swrm->devlock);
 	mutex_init(&swrm->pm_lock);
-	mutex_init(&swrm->runtime_lock);
 	swrm->wlock_holders = 0;
 	swrm->pm_state = SWRM_PM_SLEEPABLE;
 	init_waitqueue_head(&swrm->pm_wq);
@@ -3023,10 +3094,15 @@ err_irq_fail:
 	mutex_destroy(&swrm->clklock);
 	mutex_destroy(&swrm->pm_lock);
 	pm_qos_remove_request(&swrm->pm_qos_req);
-	mutex_destroy(&swrm->runtime_lock);
 
 err_pdata_fail:
 err_memory_fail:
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+	if (ret) {
+		pr_err_fb_fatal_delay("swr-mstr-ctrl.c	%s, ret=%d", __func__, ret);
+	}
+#endif
+
 	return ret;
 }
 
@@ -3063,7 +3139,6 @@ static int swrm_remove(struct platform_device *pdev)
 	mutex_destroy(&swrm->force_down_lock);
 	mutex_destroy(&swrm->pm_lock);
 	pm_qos_remove_request(&swrm->pm_qos_req);
-	mutex_destroy(&swrm->runtime_lock);
 	devm_kfree(&pdev->dev, swrm);
 	return 0;
 }
@@ -3095,7 +3170,6 @@ static int swrm_runtime_resume(struct device *dev)
 
 	dev_dbg(dev, "%s: pm_runtime: resume, state:%d\n",
 		__func__, swrm->state);
-	mutex_lock(&swrm->runtime_lock);
 	mutex_lock(&swrm->reslock);
 
 	if (swrm_request_hw_vote(swrm, LPASS_HW_CORE, true)) {
@@ -3107,7 +3181,6 @@ static int swrm_runtime_resume(struct device *dev)
 		if (swrm->req_clk_switch)
 			swrm->req_clk_switch = false;
 		mutex_unlock(&swrm->reslock);
-		mutex_unlock(&swrm->runtime_lock);
 		return 0;
 	}
 	if (swrm_request_hw_vote(swrm, LPASS_AUDIO_CORE, true)) {
@@ -3125,7 +3198,6 @@ static int swrm_runtime_resume(struct device *dev)
 					pr_err("%s: irq data is NULL\n",
 						__func__);
 					mutex_unlock(&swrm->reslock);
-					mutex_unlock(&swrm->runtime_lock);
 					return IRQ_NONE;
 				}
 				mutex_lock(&swrm->irq_lock);
@@ -3165,9 +3237,7 @@ static int swrm_runtime_resume(struct device *dev)
 			}
 			swr_master_write(swrm, SWRM_COMP_SW_RESET, 0x01);
 			swr_master_write(swrm, SWRM_COMP_SW_RESET, 0x01);
-			if (swrm->version > SWRM_VERSION_1_5)
-				swr_master_write(swrm, SWRM_MCP_BUS_CTRL, 0x01);
-
+			swr_master_write(swrm, SWRM_MCP_BUS_CTRL, 0x01);
 			swrm_master_init(swrm);
 			/* wait for hw enumeration to complete */
 			usleep_range(100, 105);
@@ -3219,7 +3289,6 @@ exit:
 	if (swrm->req_clk_switch)
 		swrm->req_clk_switch = false;
 	mutex_unlock(&swrm->reslock);
-	mutex_unlock(&swrm->runtime_lock);
 
 	return ret;
 }
@@ -3241,7 +3310,6 @@ static int swrm_runtime_suspend(struct device *dev)
 		swrm->state = SWR_MSTR_SSR;
 		return 0;
 	}
-	mutex_lock(&swrm->runtime_lock);
 	mutex_lock(&swrm->reslock);
 	mutex_lock(&swrm->force_down_lock);
 	current_state = swrm->state;
@@ -3339,10 +3407,6 @@ exit:
 	if (!hw_core_err)
 		swrm_request_hw_vote(swrm, LPASS_HW_CORE, false);
 	mutex_unlock(&swrm->reslock);
-	mutex_unlock(&swrm->runtime_lock);
-	dev_dbg(dev, "%s: pm_runtime: suspend done state: %d\n",
-			__func__, swrm->state);
-	pm_runtime_set_autosuspend_delay(dev, auto_suspend_timer);
 	return ret;
 }
 #endif /* CONFIG_PM */

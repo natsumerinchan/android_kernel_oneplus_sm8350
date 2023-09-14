@@ -9,6 +9,10 @@
 #include <linux/power_supply.h>
 #include "wcdcal-hwdep.h"
 #include <sound/jack.h>
+#ifdef OPLUS_FEATURE_MM_FEEDBACK
+#include <linux/pm_wakeup.h>
+#define HEADSET_ERR_FB_VERSION    "1.0.0"
+#endif /* OPLUS_FEATURE_MM_FEEDBACK */
 
 #define TOMBAK_MBHC_NC	0
 #define TOMBAK_MBHC_NO	1
@@ -162,6 +166,11 @@ do {                                                    \
 
 #ifdef OPLUS_ARCH_EXTENDS
 #define HIGH_HPH_DETECT_RETRY_CNT 5
+#endif
+
+#ifdef OPLUS_ARCH_EXTENDS
+extern struct delayed_work hskey_block_work;
+extern bool g_hskey_block_flag;
 #endif /* OPLUS_ARCH_EXTENDS */
 
 enum wcd_mbhc_detect_logic {
@@ -634,19 +643,14 @@ struct wcd_mbhc {
 	bool force_linein;
 	struct device_node *fsa_np;
 	struct notifier_block fsa_nb;
-
 	#ifdef OPLUS_ARCH_EXTENDS
 	bool usbc_l_det_en;
 	unsigned long usbc_mode;
 	#endif /* OPLUS_ARCH_EXTENDS */
-
 	#ifdef OPLUS_ARCH_EXTENDS
 	bool need_cross_conn;
-	#endif /* OPLUS_ARCH_EXTENDS */
-
-	#ifdef OPLUS_ARCH_EXTENDS
 	struct delayed_work hp_detect_work;
-	#endif /* OPLUS_ARCH_EXTENDS */
+	#endif
 
 	#ifdef OPLUS_ARCH_EXTENDS
 	bool irq_trigger_enable;
@@ -660,10 +664,14 @@ struct wcd_mbhc {
 	#ifdef OPLUS_ARCH_EXTENDS
 	bool enable_hp_impedance_detect;
 	#endif /* OPLUS_ARCH_EXTENDS */
-
 	#ifdef OPLUS_ARCH_EXTENDS
 	unsigned int headset_detect_mode;
 	#endif /* OPLUS_ARCH_EXTENDS */
+
+	#ifdef OPLUS_FEATURE_MM_FEEDBACK
+	struct delayed_work hp_irq_chk_work;
+	struct wakeup_source *hp_wake_lock;
+	#endif /* OPLUS_FEATURE_MM_FEEDBACK */
 };
 
 void wcd_mbhc_find_plug_and_report(struct wcd_mbhc *mbhc,

@@ -26,6 +26,9 @@
 #include "wcd-mbhc-legacy.h"
 #include "wcd-mbhc-adc.h"
 #include <asoc/wcd-mbhc-v2-api.h>
+#ifdef OPLUS_FEATURE_MM_FEEDBACK
+#include <soc/oplus/system/oplus_mm_kevent_fb.h>
+#endif /* OPLUS_FEATURE_MM_FEEDBACK */
 
 struct mutex hphl_pa_lock;
 struct mutex hphr_pa_lock;
@@ -1106,15 +1109,19 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 			mbhc->mbhc_cb->enable_mb_source(mbhc, true);
 		mbhc->btn_press_intr = false;
 		mbhc->is_btn_press = false;
+		#ifdef OPLUS_ARCH_EXTENDS
+		g_hskey_block_flag = true;
+		schedule_delayed_work(&hskey_block_work, msecs_to_jiffies(1000));
+		#endif /* OPLUS_ARCH_EXTENDS */
 
 		#ifndef OPLUS_ARCH_EXTENDS
 		if (mbhc->mbhc_fn)
 			mbhc->mbhc_fn->wcd_mbhc_detect_plug_type(mbhc);
 		#else /* OPLUS_ARCH_EXTENDS */
-		if (mbhc->mbhc_fn){
+		if (mbhc->mbhc_fn) {
 		    if (mbhc->mbhc_cfg->enable_usbc_analog) {
 		        mbhc->mbhc_fn->wcd_mbhc_detect_plug_type(mbhc);
-		    }else {
+		    } else {
 		        schedule_delayed_work(&mbhc->hp_detect_work, msecs_to_jiffies(400));
 		    }
 		}
@@ -1192,10 +1199,11 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 		#endif /* OPLUS_ARCH_EXTENDS */
 
 		#ifndef OPLUS_ARCH_EXTENDS
-		if (mbhc->mbhc_cfg->enable_usbc_analog) {
+		if (mbhc->mbhc_cfg->enable_usbc_analog)
 		#else
-		if (mbhc->mbhc_cfg->enable_usbc_analog && mbhc->headset_detect_mode != 1) {
+		if (mbhc->mbhc_cfg->enable_usbc_analog && mbhc->headset_detect_mode != 1)
 		#endif
+		{
 			WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_L_DET_EN, 0);
 			if (mbhc->mbhc_cb->clk_setup)
 				mbhc->mbhc_cb->clk_setup(
@@ -1215,6 +1223,9 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 									false);
 		}
 
+		#ifdef OPLUS_ARCH_EXTENDS
+		cancel_delayed_work_sync(&hskey_block_work);
+		#endif /* OPLUS_ARCH_EXTENDS */
 	} else if (!detection_type) {
 		#ifdef OPLUS_ARCH_EXTENDS
 		if (mbhc->micbias_enable) {
@@ -1255,6 +1266,9 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 					mbhc->component, false);
 			mbhc->usbc_l_det_en = false;
 		}
+		#endif /* OPLUS_ARCH_EXTENDS */
+		#ifdef OPLUS_ARCH_EXTENDS
+		cancel_delayed_work_sync(&hskey_block_work);
 		#endif /* OPLUS_ARCH_EXTENDS */
 	}
 
@@ -1347,10 +1361,19 @@ static void wcd_btn_lpress_fn(struct work_struct *work)
 
 	WCD_MBHC_REG_READ(WCD_MBHC_BTN_RESULT, btn_result);
 	if (mbhc->current_plug == MBHC_PLUG_TYPE_HEADSET) {
+	#ifdef OPLUS_ARCH_EXTENDS
+		if (!g_hskey_block_flag) {
+			pr_debug("%s: Reporting long button press event, btn_result: %d\n",
+				 __func__, btn_result);
+			wcd_mbhc_jack_report(mbhc, &mbhc->button_jack,
+					mbhc->buttons_pressed, mbhc->buttons_pressed);
+		}
+	#else /* OPLUS_ARCH_EXTENDS */
 		pr_debug("%s: Reporting long button press event, btn_result: %d\n",
 			 __func__, btn_result);
 		wcd_mbhc_jack_report(mbhc, &mbhc->button_jack,
 				mbhc->buttons_pressed, mbhc->buttons_pressed);
+	#endif /* OPLUS_ARCH_EXTENDS */
 	}
 	pr_debug("%s: leave\n", __func__);
 	mbhc->mbhc_cb->lock_sleep(mbhc, false);
@@ -1480,13 +1503,35 @@ static irqreturn_t wcd_mbhc_release_handler(int irq, void *data)
 		if (ret == 0) {
 			pr_debug("%s: Reporting long button release event\n",
 				 __func__);
+			#ifdef OPLUS_ARCH_EXTENDS
+			if (!g_hskey_block_flag) {
+				wcd_mbhc_jack_report(mbhc, &mbhc->button_jack,
+						0, mbhc->buttons_pressed);
+			}
+			#else /* OPLUS_ARCH_EXTENDS */
 			wcd_mbhc_jack_report(mbhc, &mbhc->button_jack,
 					0, mbhc->buttons_pressed);
+			#endif /* OPLUS_ARCH_EXTENDS */
 		} else {
 			if (mbhc->in_swch_irq_handler) {
 				pr_debug("%s: Switch irq kicked in, ignore\n",
 					__func__);
 			} else {
+				#ifdef OPLUS_ARCH_EXTENDS
+				if (!g_hskey_block_flag) {
+					pr_debug("%s: Reporting btn press\n",
+						 __func__);
+					wcd_mbhc_jack_report(mbhc,
+								 &mbhc->button_jack,
+								 mbhc->buttons_pressed,
+								 mbhc->buttons_pressed);
+					pr_debug("%s: Reporting btn release\n",
+						 __func__);
+					wcd_mbhc_jack_report(mbhc,
+							&mbhc->button_jack,
+							0, mbhc->buttons_pressed);
+				}
+				#else /* OPLUS_ARCH_EXTENDS */
 				pr_debug("%s: Reporting btn press\n",
 					 __func__);
 				wcd_mbhc_jack_report(mbhc,
@@ -1498,6 +1543,7 @@ static irqreturn_t wcd_mbhc_release_handler(int irq, void *data)
 				wcd_mbhc_jack_report(mbhc,
 						&mbhc->button_jack,
 						0, mbhc->buttons_pressed);
+				#endif /* OPLUS_ARCH_EXTENDS */
 			}
 		}
 		mbhc->buttons_pressed &= ~WCD_MBHC_JACK_BUTTON_MASK;
@@ -1872,6 +1918,32 @@ static void wcd_mbhc_plug_fix_after_ssr(struct wcd_mbhc *mbhc)
 }
 #endif /* OPLUS_ARCH_EXTENDS */
 
+#ifdef OPLUS_FEATURE_MM_FEEDBACK
+#define WCD_CHECK_PLUG_IN_IRQ_DELAY    5000//ms
+#define WCD_CHECK_PLUG_OUT_IRQ_DELAY    2000//ms
+
+static void wcd_check_plug_irq_fn(struct work_struct *work)
+{
+	struct delayed_work *dwork;
+	struct wcd_mbhc *mbhc;
+	char buf[MM_KEVENT_MAX_PAYLOAD_SIZE] = {0};
+
+	dwork = to_delayed_work(work);
+	mbhc = container_of(dwork, struct wcd_mbhc, hp_irq_chk_work);
+
+	if (mbhc && mbhc->mbhc_cfg && mbhc->mbhc_cfg->enable_usbc_analog) {
+		pr_debug("%s: mode = %lu, hph_status=%d\n", __func__, mbhc->usbc_mode, mbhc->hph_status);
+
+		if (((mbhc->usbc_mode == TYPEC_ACCESSORY_AUDIO) && (mbhc->hph_status == 0)) || \
+				((mbhc->usbc_mode == TYPEC_ACCESSORY_NONE) && (mbhc->hph_status !=0))) {
+
+			scnprintf(buf, sizeof(buf) - 1, "func@@%s$$typec_mode@@%lu$$hph_status@@%d", \
+					__func__, mbhc->usbc_mode, mbhc->hph_status);
+			upload_mm_fb_kevent_to_atlas_limit(OPLUS_AUDIO_EVENTID_HEADSET_DET, buf, MM_FB_KEY_RATELIMIT_1MIN);
+		}
+	}
+}
+#endif /* OPLUS_FEATURE_MM_FEEDBACK */
 #if IS_ENABLED(CONFIG_QCOM_FSA4480_I2C)
 #ifdef OPLUS_ARCH_EXTENDS
 static void wcd_mbhc_usbc_ana_remove_handler(struct wcd_mbhc *mbhc)
@@ -1913,6 +1985,18 @@ static int wcd_mbhc_usbc_ana_event_handler(struct notifier_block *nb,
 	dev_info(mbhc->component->dev, "%s: mode = %lu\n", __func__, mode);
 	mbhc->usbc_mode = mode;
 	#endif /* OPLUS_ARCH_EXTENDS */
+	#ifdef OPLUS_FEATURE_MM_FEEDBACK
+	if (mbhc->mbhc_cfg && mbhc->hp_wake_lock) {
+		cancel_delayed_work_sync(&mbhc->hp_irq_chk_work);
+		if (mode == TYPEC_ACCESSORY_AUDIO) {
+			__pm_wakeup_event(mbhc->hp_wake_lock, msecs_to_jiffies(WCD_CHECK_PLUG_IN_IRQ_DELAY + 10));
+			schedule_delayed_work(&mbhc->hp_irq_chk_work, msecs_to_jiffies(WCD_CHECK_PLUG_IN_IRQ_DELAY));
+		} else if (mbhc->usbc_mode == TYPEC_ACCESSORY_NONE) {
+			__pm_wakeup_event(mbhc->hp_wake_lock, msecs_to_jiffies(WCD_CHECK_PLUG_OUT_IRQ_DELAY + 10));
+			schedule_delayed_work(&mbhc->hp_irq_chk_work, msecs_to_jiffies(WCD_CHECK_PLUG_OUT_IRQ_DELAY));
+		}
+	}
+	#endif /* OPLUS_FEATURE_MM_FEEDBACK */
 
 	if (mode == TYPEC_ACCESSORY_AUDIO) {
 		if (mbhc->mbhc_cb->clk_setup)
@@ -2013,6 +2097,23 @@ int wcd_mbhc_start(struct wcd_mbhc *mbhc, struct wcd_mbhc_config *mbhc_cfg)
 		mbhc->fsa_nb.notifier_call = wcd_mbhc_usbc_ana_event_handler;
 		mbhc->fsa_nb.priority = 0;
 		rc = fsa4480_reg_notifier(&mbhc->fsa_nb, mbhc->fsa_np);
+
+		#ifdef OPLUS_ARCH_EXTENDS
+		if (rc) {
+			pr_info("%s fsa4480_reg_notifier fail,rc = %d", __func__, rc);
+			rc = 0;
+		}
+
+		mbhc->need_cross_conn = fsa4480_check_cross_conn(mbhc->fsa_np);
+		pr_info("%s: after switch check, need_cross_conn(%d)\n", __func__, mbhc->need_cross_conn);
+		#endif /* OPLUS_ARCH_EXTENDS */
+		#ifdef OPLUS_FEATURE_MM_FEEDBACK
+		mbhc->hp_wake_lock = wakeup_source_register(NULL, "hp_wake_lock");
+		if (!mbhc->hp_wake_lock) {
+			pr_err("%s: wakeup_source_register failed\n", __func__);
+		}
+		INIT_DELAYED_WORK(&mbhc->hp_irq_chk_work, wcd_check_plug_irq_fn);
+		#endif /* OPLUS_FEATURE_MM_FEEDBACK */
 	}
 
 	#ifdef OPLUS_ARCH_EXTENDS
@@ -2020,6 +2121,11 @@ int wcd_mbhc_start(struct wcd_mbhc *mbhc, struct wcd_mbhc_config *mbhc_cfg)
 		wcd_mbhc_plug_fix_after_ssr(mbhc);
 	}
 	#endif /* OPLUS_ARCH_EXTENDS */
+
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+	pr_info("%s: event_id=%u, version:%s\n", __func__, \
+			OPLUS_AUDIO_EVENTID_HEADSET_DET, HEADSET_ERR_FB_VERSION);
+#endif /* CONFIG_OPLUS_FEATURE_MM_FEEDBACK */
 
 	return rc;
 err:
@@ -2054,8 +2160,19 @@ void wcd_mbhc_stop(struct wcd_mbhc *mbhc)
 		mbhc->mbhc_cal = NULL;
 	}
 
+	#ifdef OPLUS_FEATURE_MM_FEEDBACK
+	if (mbhc->mbhc_cfg->enable_usbc_analog) {
+		fsa4480_unreg_notifier(&mbhc->fsa_nb, mbhc->fsa_np);
+		cancel_delayed_work_sync(&mbhc->hp_irq_chk_work);
+		if (mbhc->hp_wake_lock) {
+			wakeup_source_unregister(mbhc->hp_wake_lock);
+			mbhc->hp_wake_lock = NULL;
+		}
+	}
+	#else /* OPLUS_FEATURE_MM_FEEDBACK */
 	if (mbhc->mbhc_cfg->enable_usbc_analog)
 		fsa4480_unreg_notifier(&mbhc->fsa_nb, mbhc->fsa_np);
+	#endif /* OPLUS_FEATURE_MM_FEEDBACK */
 
 	pr_debug("%s: leave\n", __func__);
 }
@@ -2100,7 +2217,6 @@ int wcd_mbhc_init(struct wcd_mbhc *mbhc, struct snd_soc_component *component,
 	u32 detect_mode = 0;
 	const char *mbhc_headset_detect_mode = "oplus,mbhc-headset-detect-mode";
 	#endif /* OPLUS_ARCH_EXTENDS */
-
 
 	pr_debug("%s: enter\n", __func__);
 
@@ -2212,7 +2328,6 @@ int wcd_mbhc_init(struct wcd_mbhc *mbhc, struct snd_soc_component *component,
 		}
 	}
 	#endif /* OPLUS_ARCH_EXTENDS */
-
 
 	mbhc->in_swch_irq_handler = false;
 	mbhc->current_plug = MBHC_PLUG_TYPE_NONE;

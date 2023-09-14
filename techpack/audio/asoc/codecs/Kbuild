@@ -72,11 +72,6 @@ else
 			include $(AUDIO_ROOT)/config/konaauto.conf
 			INCS    +=  -include $(AUDIO_ROOT)/config/konaautoconf.h
 		endif
-		ifeq ($(CONFIG_ARCH_LAHAINA), y)
-			include $(AUDIO_ROOT)/config/lahainaauto.conf
-			export
-			INCS    +=  -include $(AUDIO_ROOT)/config/lahainaautoconf.h
-		endif
 		ifeq ($(CONFIG_ARCH_LITO), y)
 			include $(AUDIO_ROOT)/config/litoauto.conf
 			export
@@ -273,15 +268,23 @@ ifeq ($(KERNEL_BUILD), 1)
 	obj-y	+= wcd938x/
 	obj-y	+= bolero/
 	obj-y	+= wsa883x/
-#ifdef VENDOR_EDIT
-ifdef CONFIG_SND_SOC_TFA98XX
-	obj-y	+= tfa98xx-v6/
-endif
-ifdef CONFIG_SND_SOC_SIA81XX
-	obj-y	+= sia81xx/
-endif
-#endif
 	obj-y	+= rouleur/
+	#ifdef OPLUS_ARCH_EXTENDS
+	ifdef CONFIG_SND_SOC_SIA81XX
+		obj-y	+= sia81xx/
+	endif
+	ifdef CONFIG_SND_SOC_AW882XX
+		obj-y	+= aw882xx/
+	endif
+	ifdef CONFIG_SND_SOC_AW87XXX
+		obj-y	+= aw87390/
+	endif
+	#endif
+	#ifdef OPLUS_ARCH_EXTENDS
+	ifdef CONFIG_SND_SOC_TFA98XX
+		obj-y	+= tfa98xx-v6/
+	endif
+	#endif
 endif
 # Module information used by KBuild framework
 obj-$(CONFIG_WCD9XXX_CODEC_CORE) += wcd_core_dlkm.o
@@ -322,3 +325,6 @@ endif
 
 obj-$(CONFIG_SND_SWR_HAPTICS) += swr_haptics_dlkm.o
 swr_haptics_dlkm-y := $(SWR_HAP_OBJS)
+
+# inject some build related information
+DEFINES += -DBUILD_TIMESTAMP=\"$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')\"

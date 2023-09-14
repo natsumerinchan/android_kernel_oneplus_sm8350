@@ -613,8 +613,8 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		.name = "TX3_CDC_DMA_HOSTLESS",
 		.probe = fe_dai_probe,
 	},
+	#ifdef OPLUS_FEATURE_AUDIO_FTM
 	{
-		#ifdef OPLUS_FEATURE_AUDIO_FTM
 		.playback = {
 			.stream_name = "TX4_CDC_DMA_HOSTLESS Playback",
 			.aif_name = "TX4_CDC_DMA_DL_HL",
@@ -633,7 +633,6 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 			.rate_min = 8000,
 			.rate_max = 384000,
 		},
-		#endif /* OPLUS_FEATURE_AUDIO_FTM */
 		.capture = {
 			.stream_name = "TX4_CDC_DMA_HOSTLESS Capture",
 			.aif_name = "TX4_CDC_DMA_UL_HL",
@@ -656,6 +655,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		.name = "TX4_CDC_DMA_HOSTLESS",
 		.probe = fe_dai_probe,
 	},
+	#endif /* OPLUS_FEATURE_AUDIO_FTM */
 	{
 		.playback = {
 			.stream_name = "INT_FM_HOSTLESS Playback",
@@ -1030,24 +1030,6 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		.name = "QUAT_MI2S_RX_HOSTLESS",
 		.probe = fe_dai_probe,
 	},
-	#ifdef OPLUS_ARCH_EXTENDS
-	{
-		.capture = {
-			.stream_name = "Quinary MI2S_TX Hostless Capture",
-			.aif_name = "QUIN_MI2S_UL_HL",
-			.rates = SNDRV_PCM_RATE_8000_48000,
-			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
-				    SNDRV_PCM_FMTBIT_S24_LE),
-			.channels_min = 1,
-			.channels_max = 2,
-			.rate_min = 8000,
-			.rate_max = 48000,
-		},
-		.ops = &msm_fe_dai_ops,
-		.name = "QUIN_MI2S_TX_HOSTLESS",
-		.probe = fe_dai_probe,
-	},
-	#endif /* OPLUS_ARCH_EXTENDS */
 	{
 		.playback = {
 			.stream_name = "INT0 MI2S_RX Hostless Playback",

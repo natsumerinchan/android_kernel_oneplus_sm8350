@@ -18,15 +18,16 @@
 #include <linux/slab.h>
 #include <soc/qcom/boot_stats.h>
 #include <soc/qcom/subsystem_restart.h>
-
+//ifdef OPLUS_FEATURE_SENSOR_DRIVER
+//tangweiqin@BSP,Sensor,20201216,modify for sensor 1.8v always on
+#include <linux/regulator/consumer.h>
+//endif
 #define Q6_PIL_GET_DELAY_MS 100
 #define BOOT_CMD 1
 #define SSR_RESET_CMD 1
 #define IMAGE_UNLOAD_CMD 0
 #define MAX_FW_IMAGES 4
 #define BOOT_FOR_EARLY_CHIME_CMD 2
-
-static void adsp_loader_do(struct platform_device *pdev);
 
 static ssize_t adsp_boot_store(struct kobject *kobj,
 	struct kobj_attribute *attr,
@@ -113,8 +114,10 @@ static void adsp_load_fw(struct work_struct *adsp_ldr_work)
 	u32 adsp_state;
 	const char *img_name;
 	void *padsp_restart_cb = &adsp_load_state_notify_cb;
-	static int i = 0;
-
+//ifdef OPLUS_FEATURE_SENSOR_DRIVER
+//tangweiqin@BSP,Sensor,20201216,modify for sensor 1.8v always on
+	struct regulator *vdd_1v8 = NULL;
+//endif
 	if (!pdev) {
 		dev_err(&pdev->dev, "%s: Platform device null\n", __func__);
 		goto fail;
@@ -125,6 +128,24 @@ static void adsp_load_fw(struct work_struct *adsp_ldr_work)
 			"%s: Device tree information missing\n", __func__);
 		goto fail;
 	}
+
+//ifdef OPLUS_FEATURE_SENSOR_DRIVER
+//tangweiqin@BSP,Sensor,20201216,modify for sensor 1.8v always on
+	vdd_1v8 = regulator_get(&pdev->dev, "vddio");
+
+	if (vdd_1v8 != NULL)
+	{
+		dev_err(&pdev->dev,"%s: vdd_1v8 is not NULL\n", __func__);
+		regulator_set_voltage(vdd_1v8, 1704000, 1952000);
+		regulator_set_load(vdd_1v8, 200000);
+                rc = regulator_enable(vdd_1v8);
+                if (rc) {
+                    dev_err(&pdev->dev,"%s: regulator_enable fail.\n", __func__);
+                }
+	}
+	else
+		dev_err(&pdev->dev,"%s: vdd_1v8 is NULL\n", __func__);
+//endif
 
 	rc = of_property_read_u32(pdev->dev.of_node, adsp_dt, &adsp_state);
 	if (rc) {
@@ -197,13 +218,6 @@ load_adsp:
 			if (IS_ERR(priv->pil_h)) {
 				dev_err(&pdev->dev, "%s: pil get failed,\n",
 					__func__);
-				/*if load failed,we do retry for 10x1s times for load img timing issue*/
-				if (i < 10) {
-					i++;
-					msleep(1000);
-					pr_err("%s: going to call adsp_loader_do retry i=%d\n", __func__,i);
-					adsp_loader_do(adsp_private);
-				}
 				goto fail;
 			}
 		} else if (adsp_state == APR_SUBSYS_LOADED) {
@@ -211,7 +225,7 @@ load_adsp:
 			"%s: ADSP state = %x\n", __func__, adsp_state);
 		}
 
-		dev_err(&pdev->dev, "%s: Q6/ADSP image is loaded debug\n", __func__);
+		dev_dbg(&pdev->dev, "%s: Q6/ADSP image is loaded\n", __func__);
 		apr_register_adsp_state_cb(padsp_restart_cb, adsp_private);
 		goto success;
 	}

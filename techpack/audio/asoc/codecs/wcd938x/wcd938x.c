@@ -26,9 +26,18 @@
 #include "wcd938x.h"
 #include "internal.h"
 #include "asoc/bolero-slave-internal.h"
-#ifdef OPLUS_FEATURE_AUDIO_FTM
-#include <linux/proc_fs.h>
-#endif /* OPLUS_FEATURE_AUDIO_FTM */
+
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+#include "feedback/oplus_audio_kernel_fb.h"
+#ifdef dev_err
+#undef dev_err
+#define dev_err dev_err_fb_delay
+#endif
+#ifdef pr_err
+#undef pr_err
+#define pr_err pr_err_fb_delay
+#endif
+#endif /* CONFIG_OPLUS_FEATURE_MM_FEEDBACK */
 
 #define NUM_SWRS_DT_PARAMS 5
 #define WCD938X_VARIANT_ENTRY_SIZE 32
@@ -2168,9 +2177,8 @@ static int wcd938x_event_notify(struct notifier_block *block,
 		mbhc->plug_before_ssr = mbhc->current_plug;
 		pr_info("%s: mbhc->plug_before_ssr=%d\n", __func__, mbhc->plug_before_ssr);
 		#endif /* OPLUS_ARCH_EXTENDS */
-		if(mbhc->mbhc_cfg)
-			wcd938x->usbc_hs_status = get_usbc_hs_status(component,
-							mbhc->mbhc_cfg);
+		wcd938x->usbc_hs_status = get_usbc_hs_status(component,
+						mbhc->mbhc_cfg);
 		wcd938x_mbhc_ssr_down(wcd938x->mbhc, component);
 		wcd938x_reset_low(wcd938x->dev);
 		break;
@@ -2192,8 +2200,7 @@ static int wcd938x_event_notify(struct notifier_block *block,
 			dev_err(component->dev, "%s: mbhc initialization failed\n",
 				__func__);
 		} else {
-			if(mbhc->mbhc_cfg)
-				wcd938x_mbhc_hs_detect(component, mbhc->mbhc_cfg);
+			wcd938x_mbhc_hs_detect(component, mbhc->mbhc_cfg);
 		}
 		wcd938x->mbhc->wcd_mbhc.deinit_in_progress = false;
 		wcd938x->dev_up = true;
@@ -3096,46 +3103,6 @@ static const struct snd_kcontrol_new wcd9385_snd_controls[] = {
 			wcd938x_tx_mode_get, wcd938x_tx_mode_put),
 };
 
-#ifdef OPLUS_ARCH_EXTENDS
-static const char * const wcd_reg_dump_text[] = {
-	"ALL",
-};
-
-static SOC_ENUM_SINGLE_EXT_DECL(wcd_reg_dump_enum,
-				wcd_reg_dump_text);
-static int wcd_reg_dump_set(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
-{
-	int i = 0;
-	u32 reg = 0;
-	struct snd_soc_component *component = NULL;
-	struct wcd938x_priv *wcd938x = NULL;
-
-	if (!kcontrol) {
-		return -1;
-	}
-	component = snd_soc_kcontrol_component(kcontrol);
-
-	if (!component) {
-		return -1;
-	}
-	wcd938x = snd_soc_component_get_drvdata(component);
-
-	if (!wcd938x || !(wcd938x->regmap)) {
-		return -1;
-	}
-	dev_err(component->dev, "wcd_reg_dump");
-
-	for (i = WCD938X_BASE_ADDRESS + 1; i <= wcd938x_regmap_config.max_register; i++) {
-		regmap_read(wcd938x->regmap, i, &reg);
-		dev_err(component->dev, "%04x:%04x\n", i, reg);
-	}
-
-	dev_err(component->dev, "wcd_reg_dump end");
-	return 0;
-}
-#endif /* OPLUS_ARCH_EXTENDS */
-
 static const struct snd_kcontrol_new wcd938x_snd_controls[] = {
 	SOC_SINGLE_EXT("HPHL_COMP Switch", SND_SOC_NOPM, 0, 1, 0,
 		wcd938x_get_compander, wcd938x_set_compander),
@@ -3184,10 +3151,6 @@ static const struct snd_kcontrol_new wcd938x_snd_controls[] = {
 			wcd938x_tx_master_ch_get, wcd938x_tx_master_ch_put),
 	SOC_ENUM_EXT("DMIC7 ChMap", tx_master_ch_enum,
 			wcd938x_tx_master_ch_get, wcd938x_tx_master_ch_put),
-#ifdef OPLUS_ARCH_EXTENDS
-	SOC_ENUM_EXT("WCD REG DUMP", wcd_reg_dump_enum,
-			NULL, wcd_reg_dump_set),
-#endif /* OPLUS_ARCH_EXTENDS */
 	SOC_SINGLE_EXT("MIC BIAS1 Standalone", SND_SOC_NOPM, MIC_BIAS_1, 1, 0,
 			wcd938x_get_micbias, wcd938x_set_micbias),
 	SOC_SINGLE_EXT("MIC BIAS2 Standalone", SND_SOC_NOPM, MIC_BIAS_2, 1, 0,
@@ -3243,7 +3206,11 @@ static int wcd93xx_die_crk_det_en_put(struct snd_kcontrol *kcontrol,
 		ctl_value = det_en[ucontrol->value.enumerated.item[0]];
 		ret = snd_soc_component_update_bits(component,
 			WCD938X_DIE_CRACK_DIE_CRK_DET_EN, 0xFF, ctl_value);
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+		dev_info(component->dev, "%s: det en update value %4x, return %d \n", __func__,ctl_value, ret);
+#else
 		dev_err(component->dev, "%s: det en update value %4x, return %d \n", __func__,ctl_value, ret);
+#endif /* CONFIG_OPLUS_FEATURE_MM_FEEDBACK */
 	} else {
 		dev_err(component->dev,
 			"%s: out of index ,please check your input value \n", __func__);
@@ -3275,7 +3242,11 @@ static int wcd93xx_die_crk_det_en_get(struct snd_kcontrol *kcontrol,
 	}
 
 	regmap_read(wcd938x->regmap, WCD938X_DIE_CRACK_DIE_CRK_DET_EN, &reg);
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+	dev_info(component->dev, "%04x:%04x\n", WCD938X_DIE_CRACK_DIE_CRK_DET_EN, reg);
+#else
 	dev_err(component->dev, "%04x:%04x\n", WCD938X_DIE_CRACK_DIE_CRK_DET_EN, reg);
+#endif /* CONFIG_OPLUS_FEATURE_MM_FEEDBACK */
 
 	ucontrol->value.enumerated.item[0] = get_enum_index_from_reg(det_en, ARRAY_SIZE(det_en), reg);
 
@@ -3300,7 +3271,12 @@ static int wcd93xx_die_crk_det_int1_put(struct snd_kcontrol *kcontrol,
 		ctl_value = det_int1[ucontrol->value.enumerated.item[0]];
 		ret = snd_soc_component_update_bits(component,
 			WCD938X_DIE_CRACK_INT_DIE_CRK_DET_INT1, 0xFF, ctl_value);
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+		dev_info(component->dev, "%s: det int1 update value %4x, return %d \n", __func__,ctl_value, ret);
+#else
 		dev_err(component->dev, "%s: det int1 update value %4x, return %d \n", __func__,ctl_value, ret);
+#endif /* CONFIG_OPLUS_FEATURE_MM_FEEDBACK */
+
 	} else {
 		dev_err(component->dev, "%s: out of index ,please check your input value \n", __func__);
 		return -EINVAL;
@@ -3331,7 +3307,11 @@ static int wcd93xx_die_crk_det_int1_get(struct snd_kcontrol *kcontrol,
 	}
 
 	regmap_read(wcd938x->regmap, WCD938X_DIE_CRACK_INT_DIE_CRK_DET_INT1, &reg);
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+	dev_info(component->dev, "%04x:%04x\n", WCD938X_DIE_CRACK_INT_DIE_CRK_DET_INT1, reg);
+#else
 	dev_err(component->dev, "%04x:%04x\n", WCD938X_DIE_CRACK_INT_DIE_CRK_DET_INT1, reg);
+#endif /* CONFIG_OPLUS_FEATURE_MM_FEEDBACK */
 
 	ucontrol->value.enumerated.item[0] = get_enum_index_from_reg(det_int1, ARRAY_SIZE(det_int1), reg);
 
@@ -3360,7 +3340,11 @@ static int wcd93xx_die_crk_det_out_get(struct snd_kcontrol *kcontrol,
 	}
 
 	regmap_read(wcd938x->regmap, WCD938X_DIE_CRACK_DIE_CRK_DET_OUT, &reg);
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+	dev_info(component->dev, "%04x:%04x\n", WCD938X_DIE_CRACK_DIE_CRK_DET_OUT, reg);
+#else
 	dev_err(component->dev, "%04x:%04x\n", WCD938X_DIE_CRACK_DIE_CRK_DET_OUT, reg);
+#endif /* CONFIG_OPLUS_FEATURE_MM_FEEDBACK */
 
 	ucontrol->value.enumerated.item[0] = reg;
 
@@ -4065,26 +4049,6 @@ done:
 	return rc;
 }
 
-#ifdef OPLUS_FEATURE_AUDIO_FTM
-static ssize_t wcd_codec_exist_read(struct file *p_file,
-			 char __user *puser_buf, size_t count, loff_t *p_offset)
-{
-	return 0;
-}
-
-static ssize_t wcd_codec_exist_write(struct file *p_file,
-			 const char __user *puser_buf,
-			 size_t count, loff_t *p_offset)
-{
-	return 0;
-}
-
-static const struct file_operations wcd_codec_exist_operations = {
-	.read = wcd_codec_exist_read,
-	.write = wcd_codec_exist_write,
-};
-#endif /* OPLUS_FEATURE_AUDIO_FTM */
-
 static int wcd938x_soc_codec_probe(struct snd_soc_component *component)
 {
 	struct wcd938x_priv *wcd938x = snd_soc_component_get_drvdata(component);
@@ -4092,9 +4056,6 @@ static int wcd938x_soc_codec_probe(struct snd_soc_component *component)
 			snd_soc_component_get_dapm(component);
 	int variant;
 	int ret = -EINVAL;
-	#ifdef OPLUS_FEATURE_AUDIO_FTM
-	u32 sts1 = 0;
-	#endif /* OPLUS_FEATURE_AUDIO_FTM */
 
 	dev_info(component->dev, "%s()\n", __func__);
 	wcd938x = snd_soc_component_get_drvdata(component);
@@ -4204,17 +4165,6 @@ static int wcd938x_soc_codec_probe(struct snd_soc_component *component)
 			return ret;
 		}
 	}
-
-	#ifdef OPLUS_FEATURE_AUDIO_FTM
-	if (regmap_read(wcd938x->regmap, WCD938X_DIGITAL_INTR_STATUS_0, &sts1) == 0) {
-		if (!proc_create("wcd_codec_exist", 0644, NULL,
-				&wcd_codec_exist_operations)) {
-			pr_err("%s : Failed to register proc interface\n",
-				__func__);
-		}
-	}
-	#endif /* OPLUS_FEATURE_AUDIO_FTM */
-
 	return ret;
 
 err_hwdep:

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/slab.h>
 #include <linux/kthread.h>
@@ -25,6 +25,9 @@
 #include "adsp_err.h"
 #include <dsp/voice_mhi.h>
 #include <soc/qcom/secure_buffer.h>
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+#include "dsp/oplus_lvve_err_fb.h"
+#endif
 
 #define TIMEOUT_MS 1000
 
@@ -2865,13 +2868,6 @@ static int voice_send_cvs_register_cal_cmd(struct voice_data *v)
 		goto unlock;
 	}
 
-	if (col_data->cal_data.size >= MAX_COL_INFO_SIZE) {
-		pr_err("%s: Invalid cal data size %d!\n",
-			__func__, col_data->cal_data.size);
-		ret = -EINVAL;
-		goto unlock;
-	}
-
 	memcpy(&cvs_reg_cal_cmd.cvs_cal_data.column_info[0],
 	       (void *) &((struct audio_cal_info_voc_col *)
 	       col_data->cal_info)->data,
@@ -3870,6 +3866,7 @@ static int voice_map_cal_memory(struct cal_block_data *cal_block,
 		goto done;
 	}
 
+	mutex_lock(&common.common_lock);
 	v = &common.voice[voc_index];
 
 	result = voice_map_memory_physical_cmd(v,
@@ -3883,10 +3880,12 @@ static int voice_map_cal_memory(struct cal_block_data *cal_block,
 			&cal_block->cal_data.paddr,
 			cal_block->map_data.map_size);
 
-		goto done;
+		goto done_unlock;
 	}
 
 	cal_block->map_data.q6map_handle = common.cal_mem_handle;
+done_unlock:
+	mutex_unlock(&common.common_lock);
 done:
 	return result;
 }
@@ -5305,6 +5304,13 @@ static int voice_destroy_vocproc(struct voice_data *v)
 		pr_err("%s: apr_mvm or apr_cvp is NULL.\n", __func__);
 		return -EINVAL;
 	}
+
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+	if (v->voc_state == VOC_RUN) {
+		oplus_voice_get_lvve_err_fb(apr_cvp, v);
+	}
+#endif
+
 	mvm_handle = voice_get_mvm_handle(v);
 	cvp_handle = voice_get_cvp_handle(v);
 
@@ -8076,7 +8082,7 @@ static int32_t qdsp_cvs_callback(struct apr_client_data *data, void *priv)
 				break;
 			case VSS_ICOMMON_CMD_GET_PARAM_V2:
 			case VSS_ICOMMON_CMD_GET_PARAM_V3:
-				pr_info("%s: VSS_ICOMMON_CMD_GET_PARAM_V2\n",
+				pr_debug("%s: VSS_ICOMMON_CMD_GET_PARAM_V2\n",
 					 __func__);
 				/* Should only come here if there is an APR */
 				/* error or malformed APR packet. Otherwise */
@@ -8229,7 +8235,7 @@ static int32_t qdsp_cvs_callback(struct apr_client_data *data, void *priv)
 		pr_debug("Recd VSS_ISTREAM_EVT_READY\n");
 	} else if (data->opcode == VSS_ICOMMON_RSP_GET_PARAM ||
 		   data->opcode == VSS_ICOMMON_RSP_GET_PARAM_V3) {
-		pr_info("%s: VSS_ICOMMON_RSP_GET_PARAM\n", __func__);
+		pr_debug("%s: VSS_ICOMMON_RSP_GET_PARAM\n", __func__);
 		ptr = data->payload;
 		if (ptr[0] != 0) {
 			pr_err("%s: VSS_ICOMMON_RSP_GET_PARAM returned error = 0x%x\n",
@@ -8409,7 +8415,7 @@ static int32_t qdsp_cvp_callback(struct apr_client_data *data, void *priv)
 				break;
 			case VSS_ICOMMON_CMD_GET_PARAM_V2:
 			case VSS_ICOMMON_CMD_GET_PARAM_V3:
-				pr_info("%s: VSS_ICOMMON_CMD_GET_PARAM_V2\n",
+				pr_debug("%s: VSS_ICOMMON_CMD_GET_PARAM_V2\n",
 					 __func__);
 				/* Should only come here if there is an APR */
 				/* error or malformed APR packet. Otherwise */
@@ -8490,7 +8496,7 @@ static int32_t qdsp_cvp_callback(struct apr_client_data *data, void *priv)
 		}
 	} else if (data->opcode == VSS_ICOMMON_RSP_GET_PARAM ||
 		   data->opcode == VSS_ICOMMON_RSP_GET_PARAM_V3) {
-		pr_info("%s: VSS_ICOMMON_RSP_GET_PARAM\n", __func__);
+		pr_debug("%s: VSS_ICOMMON_RSP_GET_PARAM\n", __func__);
 		ptr = data->payload;
 		if (ptr[0] != 0) {
 			pr_err("%s: VSS_ICOMMON_RSP_GET_PARAM returned error = 0x%x\n",
@@ -8510,11 +8516,27 @@ static int32_t qdsp_cvp_callback(struct apr_client_data *data, void *priv)
 		voice_cvpparam_tmp_buf[1] = ptr[6];
 		voice_cvpparam_tmp_buf[2] = ptr[7];
 		voice_cvpparam_tmp_buf[3] = ptr[8];
-		wake_up(&v->cvp_wait);
 #else /* OPLUS_FEATURE_AUDIODETECT */
 		rtac_make_voice_callback(RTAC_CVP, data->payload,
 			data->payload_size);
 #endif /* OPLUS_FEATURE_AUDIODETECT */
+
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)
+		if ((LVVEFQ_RX_MODULE_ID == ptr[1]) && (INSTANCE_ID_0 == ptr[2]) && (VOICE_PARAM_LVVEFQ_GET_ERR == ptr[3])) {
+			 /* ptr[4] is return payload bytes, ptr[5] is the start of payload data */
+			if ((ptr[4] > 0) && (data->payload_size > (5 * sizeof(uint32_t)))) {
+				oplus_copy_voice_err_result(MSM_AFE_PORT_TYPE_RX, (void *)(ptr + 5), data->payload_size - (5 * sizeof(uint32_t)));
+			}
+		} else if ((LVVEFQ_TX_MODULE_ID == ptr[1]) && (0x8000 == ptr[2]) && (VOICE_PARAM_LVVEFQ_GET_ERR == ptr[3])) {
+			if ((ptr[4] > 0) && (data->payload_size > (5 * sizeof(uint32_t)))) {
+				oplus_copy_voice_err_result(MSM_AFE_PORT_TYPE_TX, (void *)(ptr + 5), data->payload_size - (5 * sizeof(uint32_t)));
+			}
+		}
+#endif
+
+#if defined OPLUS_FEATURE_AUDIODETECT || defined CONFIG_OPLUS_FEATURE_MM_FEEDBACK
+		wake_up(&v->cvp_wait);
+#endif
 	} else if (data->opcode == VSS_IVPCM_EVT_NOTIFY_V2) {
 		if ((data->payload != NULL) && data->payload_size ==
 		    sizeof(struct vss_ivpcm_evt_notify_v2_t) &&
@@ -10108,7 +10130,7 @@ int voice_set_cvp_auddet_param(u8 bEnable)
 	struct voice_data	*v = NULL;
 	memset(&param_hdr, 0, sizeof(param_hdr));
 
-	param_hdr.module_id = MUTE_DETECT_MODULE_ID;
+		param_hdr.module_id = MUTE_DETECT_MODULE_ID;
 	param_hdr.instance_id = INSTANCE_ID_0;
 	param_hdr.param_size = sizeof(auddet_ena);
 
@@ -10198,7 +10220,7 @@ int voice_get_cvp_param(void)
 
 			get_param->payload_size = (4) * sizeof(uint32_t) + sizeof(struct param_hdr_v3);
 
-			get_param->module_id = MUTE_DETECT_MODULE_ID;
+				get_param->module_id = MUTE_DETECT_MODULE_ID;
 			if (j == 0) {
 				get_param->instance_id = INSTANCE_ID_0;
 			} else {
