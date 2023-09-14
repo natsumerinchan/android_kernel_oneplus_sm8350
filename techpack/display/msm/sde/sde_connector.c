@@ -23,28 +23,7 @@
 #ifdef OPLUS_BUG_STABILITY
 #include "oplus_display_private_api.h"
 #include "oplus_dc_diming.h"
-#include <linux/sched.h>
 #endif
-
-#ifdef OPLUS_BUG_STABILITY
-#include "oplus_adfr.h"
-#endif
-
-#ifdef OPLUS_BUG_STABILITY
-#include "sde_trace.h"
-
-extern struct oplus_apollo_bk apollo_bk;
-extern int backlight_smooth_enable;
-static DEFINE_SPINLOCK(g_bk_lock);
-#endif
-
-#ifdef OPLUS_BUG_STABILITY
-#define MSM_BOOT_MODE_FACTORY 3
-#include <linux/list.h>
-#include <linux/list_sort.h>
-#include <drm/drm_modes.h>
-#endif
-
 #define BL_NODE_NAME_SIZE 32
 #define HDR10_PLUS_VSIF_TYPE_CODE      0x81
 
@@ -102,6 +81,8 @@ extern int oplus_debug_max_brightness;
 extern int oplus_seed_backlight;
 #endif
 
+int skip_backlight = 2;
+
 static inline struct sde_kms *_sde_connector_get_kms(struct drm_connector *conn)
 {
 	struct msm_drm_private *priv;
@@ -119,21 +100,11 @@ static inline struct sde_kms *_sde_connector_get_kms(struct drm_connector *conn)
 	return to_sde_kms(priv->kms);
 }
 
-//#ifdef OPLUS_BUG_STABILITY
+#ifdef OPLUS_BUG_STABILITY
+/* PSW.MM.Display.LCD.Feature,2021-12-22 open platform dither */
 static u32 dither_matrix[DITHER_MATRIX_SZ] = {
 	15, 7, 13, 5, 3, 11, 1, 9, 12, 4, 14, 6, 0, 8, 2, 10
 };
-//#endif
-
-#ifdef OPLUS_BUG_STABILITY
-extern bool is_spread_backlight(struct dsi_display *display, int level);
-extern void update_pending_backlight(struct dsi_display *display, int level);
-extern int get_boot_mode(void);
-struct dc_apollo_pcc_sync dc_apollo;
-EXPORT_SYMBOL(dc_apollo);
-extern int dc_apollo_enable;
-extern int oplus_backlight_wait_vsync(struct drm_encoder *drm_enc);
-extern int dc_apollo_sync_hbmon(struct dsi_display *display);
 #endif
 
 static int sde_backlight_device_update_status(struct backlight_device *bd)
@@ -153,10 +124,6 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 		return -EINVAL;
 	}
 
-#ifdef OPLUS_BUG_STABILITY
-	SDE_ATRACE_BEGIN("sde_backlight_device_update_status");
-#endif
-
 	brightness = bd->props.brightness;
 
 	if ((bd->props.power != FB_BLANK_UNBLANK) ||
@@ -170,8 +137,10 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 	if (brightness > c_conn->thermal_max_brightness)
 		brightness = c_conn->thermal_max_brightness;
 #ifdef OPLUS_BUG_STABILITY
-	display->panel->bl_config.oplus_raw_bl = brightness;
-#endif /*OPLUS_BUG_STABILITY*/
+	if (brightness > 0 && brightness < display->panel->bl_config.bl_min_level)
+		brightness = display->panel->bl_config.bl_min_level;
+#endif
+
 
 #ifndef OPLUS_BUG_STABILITY
 	/* map UI brightness into driver backlight level with rounding */
@@ -181,28 +150,27 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 	if (oplus_debug_max_brightness) {
 		bl_lvl = mult_frac(brightness, oplus_debug_max_brightness,
 			display->panel->bl_config.brightness_max_level);
-    } else if (brightness == 0) {
-        bl_lvl = 0;
-    } else {
-        if (display->panel->oplus_priv.bl_remap && display->panel->oplus_priv.bl_remap_count) {
-            int i = 0;
-            int count = display->panel->oplus_priv.bl_remap_count;
-            struct oplus_brightness_alpha *lut = display->panel->oplus_priv.bl_remap;
+	}else {
+		if (display->panel->oplus_priv.bl_remap && display->panel->oplus_priv.bl_remap_count) {
+			int i = 0;
+			int count = display->panel->oplus_priv.bl_remap_count;
+			struct oplus_brightness_alpha *lut = display->panel->oplus_priv.bl_remap;
 
-            for (i = 0; i < display->panel->oplus_priv.bl_remap_count; i++) {
-                if (display->panel->oplus_priv.bl_remap[i].brightness >= brightness)
-                    break;
-            }
+			for (i = 0; i < display->panel->oplus_priv.bl_remap_count; i++) {
+			if (display->panel->oplus_priv.bl_remap[i].brightness >= brightness)
+				break;
+			}
 
-            if (i == 0)
-                bl_lvl = lut[0].alpha;
-            else if (i == count)
-                bl_lvl = lut[count - 1].alpha;
-            else
-                bl_lvl = interpolate(brightness, lut[i-1].brightness,
-                        lut[i].brightness, lut[i-1].alpha,
-                        lut[i].alpha);
-        } else if (brightness > display->panel->bl_config.brightness_normal_max_level) {
+			if (i == 0)
+				bl_lvl = lut[0].alpha;
+			else if (i == count)
+				bl_lvl = lut[count - 1].alpha;
+			else
+				bl_lvl = interpolate(brightness, lut[i-1].brightness,
+						lut[i].brightness, lut[i-1].alpha,
+						lut[i].alpha);
+			SDE_INFO("original_bl_lvl is %d,  remapped_bl_lvl is %d\n", brightness, bl_lvl);
+		} else if (brightness > display->panel->bl_config.brightness_normal_max_level) {
 			bl_lvl = interpolate(brightness,
 					display->panel->bl_config.brightness_normal_max_level,
 					display->panel->bl_config.brightness_max_level,
@@ -231,7 +199,6 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 		goto done;
 	}
 
-#ifndef OPLUS_BUG_STABILITY
 	if (c_conn->ops.set_backlight) {
 		/* skip notifying user space if bl is 0 */
 		if (brightness != 0) {
@@ -244,76 +211,7 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 				c_conn->display, bl_lvl);
 		c_conn->unset_bl_level = 0;
 	}
-#else
-	// Add for apollo to cache brightness
-	if (c_conn->ops.set_backlight) {
-		/* skip notifying user space if bl is 0 */
-		if (brightness != 0) {
-			event.type = DRM_EVENT_SYS_BACKLIGHT;
-			event.length = sizeof(u32);
-			msm_mode_object_event_notify(&c_conn->base.base,
-				c_conn->base.dev, &event, (u8 *)&brightness);
-		}
 
-		if (display->panel->oplus_priv.is_apollo_support && backlight_smooth_enable) {
-			//#ifdef OPLUS_BUG_STABILITY
-			if ((MSM_BOOT_MODE_FACTORY != get_boot_mode()) && (is_spread_backlight(display, bl_lvl)) && !dc_apollo_sync_hbmon(display)) {
-			//#endif
-				if (display->panel->oplus_priv.dc_apollo_sync_enable) {
-					if ((display->panel->bl_config.bl_level >= display->panel->oplus_priv.sync_brightness_level
-						&& display->panel->bl_config.bl_level < display->panel->oplus_priv.dc_apollo_sync_brightness_level)
-						|| display->panel->bl_config.bl_level == 4) {
-						if (bl_lvl == display->panel->oplus_priv.dc_apollo_sync_brightness_level
-							/*&& dc_apollo_enable*/
-							&& dc_apollo.pcc_last >= display->panel->oplus_priv.dc_apollo_sync_brightness_level_pcc) {
-							rc = wait_event_timeout(dc_apollo.bk_wait, dc_apollo.dc_pcc_updated, msecs_to_jiffies(17));
-							if (!rc) {
-								pr_err("dc wait timeout\n");
-							}
-							else {
-								oplus_backlight_wait_vsync(c_conn->encoder);
-							}
-							dc_apollo.dc_pcc_updated = 0;
-						}
-					}
-					else if (display->panel->bl_config.bl_level < display->panel->oplus_priv.sync_brightness_level
-							&& display->panel->bl_config.bl_level > 4) {
-						if (bl_lvl == display->panel->oplus_priv.dc_apollo_sync_brightness_level
-							/*&& dc_apollo_enable*/
-							&& dc_apollo.pcc_last >= display->panel->oplus_priv.dc_apollo_sync_brightness_level_pcc_min) {
-							rc = wait_event_timeout(dc_apollo.bk_wait, dc_apollo.dc_pcc_updated, msecs_to_jiffies(17));
-							if (!rc) {
-								pr_err("dc wait timeout\n");
-							}
-							else {
-								oplus_backlight_wait_vsync(c_conn->encoder);
-							}
-							dc_apollo.dc_pcc_updated = 0;
-						}
-					}
-				}
-				spin_lock(&g_bk_lock);
-				update_pending_backlight(display, bl_lvl);
-				spin_unlock(&g_bk_lock);
-			} else {
-				spin_lock(&g_bk_lock);
-				update_pending_backlight(display, bl_lvl);
-				spin_unlock(&g_bk_lock);
-				rc = c_conn->ops.set_backlight(&c_conn->base,
-				c_conn->display, bl_lvl);
-				c_conn->unset_bl_level = 0;
-			}
-		} else {
-			rc = c_conn->ops.set_backlight(&c_conn->base,
-					c_conn->display, bl_lvl);
-			c_conn->unset_bl_level = 0;
-		}
-	}
-#endif
-
-#ifdef OPLUS_BUG_STABILITY
-	SDE_ATRACE_END("sde_backlight_device_update_status");
-#endif
 done:
 	sde_vm_unlock(sde_kms);
 
@@ -377,7 +275,7 @@ static int sde_backlight_setup(struct sde_connector *c_conn,
 	props.brightness = bl_config->brightness_max_level;
 #else
 	props.brightness = bl_config->brightness_default_level;
-#endif  /*OPLUS_BUG_STABILITY*/
+#endif  /*VENDOR_EDIT*/
 	snprintf(bl_node_name, BL_NODE_NAME_SIZE, "panel%u-backlight",
 							display_count);
 	c_conn->bl_device = backlight_device_register(bl_node_name, dev->dev,
@@ -389,13 +287,6 @@ static int sde_backlight_setup(struct sde_connector *c_conn,
 		return -ENODEV;
 	}
 	c_conn->thermal_max_brightness = bl_config->brightness_max_level;
-
-#ifdef OPLUS_BUG_STABILITY
-		if (display->panel->oplus_priv.dc_apollo_sync_enable) {
-			init_waitqueue_head(&dc_apollo.bk_wait);
-			mutex_init(&dc_apollo.lock);
-		}
-#endif
 
 	/**
 	 * In TVM, thermal cooling device is not enabled. Registering with dummy
@@ -498,7 +389,8 @@ void sde_connector_unregister_event(struct drm_connector *connector,
 	(void)sde_connector_register_event(connector, event_idx, 0, 0);
 }
 
-//#ifdef OPLUS_BUG_STABILITY
+#ifdef OPLUS_BUG_STABILITY
+/* PSW.MM.Display.LCD.Feature,2021-12-22 open platform dither */
 static int _sde_connector_get_default_dither_cfg_v1(
 		struct sde_connector *c_conn, void *cfg)
 {
@@ -542,7 +434,7 @@ static int _sde_connector_get_default_dither_cfg_v1(
 	dither_cfg->temporal_en = 0;
 	return 0;
 }
-//#endif
+#endif
 
 static void _sde_connector_install_dither_property(struct drm_device *dev,
 		struct sde_kms *sde_kms, struct sde_connector *c_conn)
@@ -550,13 +442,14 @@ static void _sde_connector_install_dither_property(struct drm_device *dev,
 	char prop_name[DRM_PROP_NAME_LEN];
 	struct sde_mdss_cfg *catalog = NULL;
 	u32 version = 0;
-//#ifdef OPLUS_BUG_STABILITY
+#ifdef OPLUS_BUG_STABILITY
+/* PSW.MM.Display.LCD.Feature,2021-12-22 open platform dither */
 	void *cfg;
 	struct drm_property_blob *blob_ptr;
 	int ret = 0;
-  	u32 len = 0;
-  	bool defalut_dither_needed = false;
-//#endif
+	u32 len = 0;
+	bool defalut_dither_needed = false;
+#endif
 
 	if (!dev || !sde_kms || !c_conn) {
 		SDE_ERROR("invld args (s), dev %pK, sde_kms %pK, c_conn %pK\n",
@@ -575,7 +468,8 @@ static void _sde_connector_install_dither_property(struct drm_device *dev,
 		msm_property_install_blob(&c_conn->property_info, prop_name,
 			DRM_MODE_PROP_BLOB,
 			CONNECTOR_PROP_PP_DITHER);
-		//#ifdef OPLUS_BUG_STABILITY
+#ifdef OPLUS_BUG_STABILITY
+/* PSW.MM.Display.LCD.Feature,2021-12-22 open platform dither */
 		len = sizeof(struct drm_msm_dither);
 		cfg = kzalloc(len, GFP_KERNEL);
 		if (!cfg)
@@ -584,13 +478,14 @@ static void _sde_connector_install_dither_property(struct drm_device *dev,
 		ret = _sde_connector_get_default_dither_cfg_v1(c_conn, cfg);
 		if (!ret)
 			defalut_dither_needed = true;
-		//#endif
+#endif
 		break;
 	default:
 		SDE_ERROR("unsupported dither version %d\n", version);
 		return;
 	}
-	//#ifdef OPLUS_BUG_STABILITY
+#ifdef OPLUS_BUG_STABILITY
+/* PSW.MM.Display.LCD.Feature,2021-12-22 open platform dither */
 	if (defalut_dither_needed) {
 		blob_ptr = drm_property_create_blob(dev, len, cfg);
 		if (IS_ERR_OR_NULL(blob_ptr))
@@ -599,7 +494,7 @@ static void _sde_connector_install_dither_property(struct drm_device *dev,
 	}
 exit:
 	kfree(cfg);
-	//#endif
+#endif
 }
 
 int sde_connector_get_dither_cfg(struct drm_connector *conn,
@@ -609,7 +504,10 @@ int sde_connector_get_dither_cfg(struct drm_connector *conn,
 	struct sde_connector *c_conn = NULL;
 	struct sde_connector_state *c_state = NULL;
 	size_t dither_sz = 0;
+#ifndef OPLUS_BUG_STABILITY
+/* PSW.MM.Display.LCD.Feature,2021-12-22 open platform dither */
 	bool is_dirty;
+#endif
 	u32 *p = (u32 *)cfg;
 
 	if (!conn || !state || !p) {
@@ -620,6 +518,8 @@ int sde_connector_get_dither_cfg(struct drm_connector *conn,
 	c_conn = to_sde_connector(conn);
 	c_state = to_sde_connector_state(state);
 
+#ifndef OPLUS_BUG_STABILITY
+/* PSW.MM.Display.LCD.Feature,2021-12-22 open platform dither */
 	is_dirty = msm_property_is_dirty(&c_conn->property_info,
 			&c_state->property_state,
 			CONNECTOR_PROP_PP_DITHER);
@@ -642,6 +542,19 @@ int sde_connector_get_dither_cfg(struct drm_connector *conn,
 			return 0;
 	}
 	*len = dither_sz;
+#else
+	/* try to get user config data first */
+	*cfg = msm_property_get_blob(&c_conn->property_info,
+			&c_state->property_state,
+			&dither_sz,
+			CONNECTOR_PROP_PP_DITHER);
+	/* if user config data doesn't exist, use default dither blob */
+	if (*cfg == NULL && c_conn->blob_dither) {
+		*cfg = c_conn->blob_dither->data;
+		dither_sz = c_conn->blob_dither->length;
+	}
+	*len = dither_sz;
+#endif
 	return 0;
 }
 
@@ -991,54 +904,8 @@ void sde_connector_set_qsync_params(struct drm_connector *connector)
 					c_conn->qsync_mode, qsync_propval);
 			c_conn->qsync_updated = true;
 			c_conn->qsync_mode = qsync_propval;
-#ifdef OPLUS_BUG_STABILITY
-			if (oplus_adfr_is_support()) {
-				if (c_conn->qsync_mode == SDE_RM_QSYNC_DISABLED) {
-					/* qsync disable need change min fps */
-					c_conn->qsync_curr_dynamic_min_fps = 0;
-					c_conn->qsync_deferred_window_status = SET_WINDOW_IMMEDIATELY;
-				} else {
-					/* qsync enable no need change window */
-					c_conn->qsync_dynamic_min_fps = 0;
-				}
-			}
-#endif
 		}
 	}
-
-#ifdef OPLUS_BUG_STABILITY
-	if (oplus_adfr_is_support()) {
-		/*
-		prop_dirty = msm_property_is_dirty(&c_conn->property_info,
-						&c_state->property_state,
-						CONNECTOR_PROP_QSYNC_MIN_FPS);
-		*/
-		prop_dirty = oplus_adfr_qsync_mode_minfps_is_updated();
-		if (prop_dirty) {
-			/*
-			qsync_propval = sde_connector_get_property(c_conn->base.state,
-							CONNECTOR_PROP_QSYNC_MIN_FPS);
-			*/
-			qsync_propval = oplus_adfr_get_qsync_mode_minfps();
-			if (oplus_adfr_has_auto_mode(qsync_propval)) {
-				SDE_DEBUG("kVRR updated for auto mode %08X\n", qsync_propval);
-			} else {
-				if (qsync_propval != c_conn->qsync_dynamic_min_fps) {
-					SDE_INFO("kVRR updated qsync min fps %d -> %d\n",
-							c_conn->qsync_dynamic_min_fps, qsync_propval);
-					c_conn->qsync_updated = true;
-					c_conn->qsync_curr_dynamic_min_fps = qsync_propval;
-					if (qsync_propval == 0) {
-						/* closing window immediately when qsync off */
-						c_conn->qsync_deferred_window_status = SET_WINDOW_IMMEDIATELY;
-					} else {
-						c_conn->qsync_deferred_window_status = DEFERRED_WINDOW_START;
-					}
-				}
-			}
-		}
-	}
-#endif
 }
 
 void sde_connector_complete_qsync_commit(struct drm_connector *conn,
@@ -1103,6 +970,10 @@ static int _sde_connector_update_dirty_properties(
 					connector->state, CONNECTOR_PROP_LP);
 			_sde_connector_update_power_locked(c_conn);
 			mutex_unlock(&c_conn->lock);
+			break;
+		case CONNECTOR_PROP_BL_SCALE:
+		case CONNECTOR_PROP_SV_BL_SCALE:
+			_sde_connector_update_bl_scale(c_conn);
 			break;
 		case CONNECTOR_PROP_HDR_METADATA:
 			_sde_connector_update_hdr_metadata(c_conn, c_state);
@@ -1177,13 +1048,11 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 
 	rc = _sde_connector_update_dirty_properties(connector);
 #ifdef OPLUS_BUG_STABILITY
-	/* Fix low light because of sync_ panel_brightness flash problem */
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
 		display = (struct dsi_display *)c_conn->display;
-		if(display && display->panel && display->panel->oplus_priv.vendor_name) {
-			if ((!strcmp(display->panel->oplus_priv.vendor_name, "AMB655X")) || (!strcmp(display->panel->oplus_priv.vendor_name, "AMB670YF01")) || (!strcmp(display->panel->oplus_priv.vendor_name, "AMS662ZS01"))) {
-				rc = sde_connector_update_hbm(connector);
-			}
+		if (display && display->panel &&
+			is_nonsupport_ramless(display->panel->oplus_priv.vendor_name)) {
+			rc = sde_connector_update_hbm(connector);
 		}
 	}
 #endif /* OPLUS_BUG_STABILITY */
@@ -1235,11 +1104,6 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	if (c_conn->qsync_updated) {
 		params.qsync_mode = c_conn->qsync_mode;
 		params.qsync_update = true;
-#ifdef OPLUS_BUG_STABILITY
-		if (oplus_adfr_is_support()) {
-			params.qsync_dynamic_min_fps = c_conn->qsync_curr_dynamic_min_fps;
-		}
-#endif
 	}
 
 	rc = c_conn->ops.prepare_commit(c_conn->display, &params);
@@ -1876,24 +1740,6 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 		msm_property_set_dirty(&c_conn->property_info,
 				&c_state->property_state, idx);
 		break;
-#ifdef OPLUS_BUG_STABILITY
-	case CONNECTOR_PROP_QSYNC_MIN_FPS:
-		if (oplus_adfr_is_support()) {
-			SDE_DEBUG("kVRR set qsync minfps dirty with %llu[%08X]\n", val, val);
-
-			/* minfps maybe disappear after state change, so handle it early */
-			if (oplus_adfr_handle_auto_mode(val)) {
-				SDE_DEBUG("kVRR updated auto mode %08X\n", val);
-			} else {
-				oplus_adfr_handle_qsync_mode_minfps(val);
-				SDE_DEBUG("kVRR updated qsync mode minfps %08X\n", val);
-			}
-
-			msm_property_set_dirty(&c_conn->property_info,
-					&c_state->property_state, idx);
-		}
-		break;
-#endif
 	default:
 		break;
 	}
@@ -1978,11 +1824,37 @@ void sde_connector_prepare_fence(struct drm_connector *connector)
 void sde_connector_complete_commit(struct drm_connector *connector,
 		ktime_t ts, enum sde_fence_event fence_event)
 {
+#ifdef OPLUS_FEATURE_AOD_RAMLESS
+	struct sde_connector *c_conn = NULL;
+	struct dsi_display *dsi_display = NULL;
+#endif
 	if (!connector) {
 		SDE_ERROR("invalid connector\n");
 		return;
 	}
+#ifdef OPLUS_FEATURE_AOD_RAMLESS
+	c_conn = to_sde_connector(connector);
 
+	if (!c_conn) {
+		SDE_ERROR("Invalid params sde_connector null\n");
+		return;
+	}
+
+	dsi_display = c_conn->display;
+
+	if (!dsi_display || !dsi_display->panel) {
+		SDE_ERROR("Invalid params dsi_display or panel null\n");
+		return;
+	}
+
+	if (dsi_display->panel->oplus_priv.is_aod_ramless) {
+		if (skip_backlight > 0) {
+			skip_backlight--;
+		} else if (skip_backlight == 0) {
+			sde_backlight_device_update_status(c_conn->bl_device);
+		}
+	}
+#endif
 	/* signal connector's retire fence */
 	sde_fence_signal(to_sde_connector(connector)->retire_fence,
 			ts, fence_event);
@@ -2599,36 +2471,6 @@ static void sde_connector_early_unregister(struct drm_connector *connector)
 	/* debugfs under connector->debugfs are deleted by drm_debugfs */
 }
 
-#ifdef OPLUS_BUG_STABILITY
-static int drm_mode_compare_for_adfr(void *priv, struct list_head *lh_a, struct list_head *lh_b)
-{
-	struct drm_display_mode *a = list_entry(lh_a, struct drm_display_mode, head);
-	struct drm_display_mode *b = list_entry(lh_b, struct drm_display_mode, head);
-	int diff;
-
-	diff = ((b->type & DRM_MODE_TYPE_PREFERRED) != 0) -
-		((a->type & DRM_MODE_TYPE_PREFERRED) != 0);
-	if (diff)
-		return diff;
-	diff = a->hdisplay * a->vdisplay - b->hdisplay * b->vdisplay;
-	if (diff)
-		return diff;
-
-	diff = a->vrefresh - b->vrefresh;
-	if (diff)
-		return diff;
-
-	diff = b->clock - a->clock;
-	return diff;
-}
-
-static void drm_mode_sort_for_adfr(struct list_head *mode_list)
-{
-	list_sort(NULL, mode_list, drm_mode_compare_for_adfr);
-}
-#endif
-
-
 static int sde_connector_fill_modes(struct drm_connector *connector,
 		uint32_t max_width, uint32_t max_height)
 {
@@ -2643,10 +2485,6 @@ static int sde_connector_fill_modes(struct drm_connector *connector,
 
 	mode_count = drm_helper_probe_single_connector_modes(connector,
 			max_width, max_height);
-
-	#ifdef OPLUS_BUG_STABILITY
-	drm_mode_sort_for_adfr(&connector->modes);
-	#endif
 
 	if (sde_conn->ops.set_allowed_mode_switch)
 		sde_conn->ops.set_allowed_mode_switch(connector,
@@ -2795,10 +2633,6 @@ static int sde_connector_atomic_check(struct drm_connector *connector,
 	return 0;
 }
 
-#if IS_ENABLED(CONFIG_TOUCHPANEL_OPLUS)
-extern void set_esd_check_happened(int val);
-#endif
-
 static void _sde_connector_report_panel_dead(struct sde_connector *conn,
 	bool skip_pre_kickoff)
 {
@@ -2814,10 +2648,6 @@ static void _sde_connector_report_panel_dead(struct sde_connector *conn,
 	 */
 	if (conn->panel_dead)
 		return;
-
-#if IS_ENABLED(CONFIG_TOUCHPANEL_OPLUS)
-        set_esd_check_happened(1);
-#endif
 
 	SDE_EVT32(SDE_EVTLOG_ERROR);
 	sde_encoder_display_failure_notification(conn->encoder,
@@ -3186,13 +3016,6 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 					ARRAY_SIZE(e_qsync_mode), 0,
 					CONNECTOR_PROP_QSYNC_MODE);
 
-#ifdef OPLUS_BUG_STABILITY
-		/* add qsync min fps prop when DPU support and ADFR support */
-		if (sde_kms->catalog->has_qsync && oplus_adfr_is_support()) {
-			msm_property_install_range(&c_conn->property_info, "qsync_min_fps",
-					0x0, 0, ~0, 0, CONNECTOR_PROP_QSYNC_MIN_FPS);
-		}
-#endif
 		if (display_info->capabilities & MSM_DISPLAY_CAP_CMD_MODE)
 			msm_property_install_enum(&c_conn->property_info,
 				"frame_trigger_mode", 0, 0,
