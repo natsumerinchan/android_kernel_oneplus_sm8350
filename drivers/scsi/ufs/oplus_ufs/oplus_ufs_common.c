@@ -11,13 +11,22 @@
 
 #include <linux/module.h>
 #include <trace/hooks/oplus_ufs.h>
+#include <linux/delay.h>
 #include <soc/oplus/device_info.h>
 #include <linux/proc_fs.h>
 
-int ufsplus_tw_status = 0;
-EXPORT_SYMBOL(ufsplus_tw_status);
-int ufsplus_hpb_status = 0;
-EXPORT_SYMBOL(ufsplus_hpb_status);
+static bool flag_retry = 0;
+struct proc_dir_entry *ufs_proc_dir;
+
+void ufs_extra_query_retry_handle(void *data, int err, bool flag_res, int *i)
+{
+	if(!err && flag_res && (*i == 999) && !flag_retry){
+		flag_retry = 1;
+		*i = 499;
+	}
+
+	return;
+}
 
 void ufs_gen_proc_devinfo_handle(void *data, struct ufs_hba *hba)
 {
@@ -37,42 +46,7 @@ void ufs_gen_proc_devinfo_handle(void *data, struct ufs_hba *hba)
 	if (ret) {
 		printk("Fail register_device_proc ufs \n");
 	}
-	ret = register_device_proc_for_ufsplus("ufsplus_status", &ufsplus_hpb_status,&ufsplus_tw_status);
-	if (ret) {
-		printk("Fail register_device_proc_for_ufsplus\n");
-	}
-	return;
-}
 
-/*
- * Check whether this bio carries any data or not. A NULL bio is allowed.
- */
-static inline bool oplus_ufs_bio_has_data(struct bio *bio)
-{
-	if (bio &&
-	    bio->bi_iter.bi_size &&
-	    bio_op(bio) != REQ_OP_DISCARD &&
-	    bio_op(bio) != REQ_OP_SECURE_ERASE &&
-	    bio_op(bio) != REQ_OP_WRITE_ZEROES)
-		return true;
-
-	return false;
-}
-
-void ufs_latency_hist_handle(void *data, struct ufs_hba *hba , struct ufshcd_lrb *lrbp)
-{
-#if defined(CONFIG_TRACING) && defined(DEBUG)
-	if(lrbp->cmd->request){
-		u_int64_t delta_us = ktime_us_delta(lrbp->compl_time_stamp, lrbp->issue_time_stamp);
-
-		if((5000 < delta_us) && oplus_ufs_bio_has_data(lrbp->cmd->request->bio)){
-			trace_printk("ufs_io_latency:%06lld us, io_type:%s, LBA:%08x, size:%d\n",
-					delta_us, (rq_data_dir(lrbp->cmd->request) == READ) ? "R" : "W",
-					(unsigned int)lrbp->cmd->request->bio->bi_iter.bi_sector,
-					lrbp->cmd->sdb.length);
-		}
-	}
-#endif
 	return;
 }
 
@@ -83,13 +57,13 @@ oplus_ufs_common_init(void)
 
 	printk("oplus_ufs_common_init");
 
+	rc = register_trace_android_vh_ufs_extra_query_retry(ufs_extra_query_retry_handle, NULL);
+	if (rc != 0)
+		pr_err("register_trace_android_vh_ufs_extra_query_retry failed! rc=%d\n", rc);
+
 	rc = register_trace_android_vh_ufs_gen_proc_devinfo(ufs_gen_proc_devinfo_handle, NULL);
 	if (rc != 0)
 		pr_err("register_trace_android_vh_ufs_gen_proc_devinfo failed! rc=%d\n", rc);
-		
-	rc = register_trace_android_vh_ufs_latency_hist(ufs_latency_hist_handle, NULL);
-	if (rc != 0)
-		pr_err("register_trace_android_vh_ufs_latency_hist failed! rc=%d\n", rc);
 
 	return rc;
 }

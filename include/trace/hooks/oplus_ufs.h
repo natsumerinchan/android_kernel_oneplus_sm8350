@@ -14,15 +14,15 @@
  */
 #if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
 struct ufs_hba;
+DECLARE_HOOK(android_vh_ufs_extra_query_retry,
+	TP_PROTO(int err, bool flag_res, int *i),
+	TP_ARGS(err, flag_res, i));
 DECLARE_HOOK(android_vh_ufs_gen_proc_devinfo,
 	TP_PROTO(struct ufs_hba *hba),
 	TP_ARGS(hba));
-DECLARE_HOOK(android_vh_ufs_latency_hist,
-	TP_PROTO(struct ufs_hba *hba, struct ufshcd_lrb *lrbp),
-	TP_ARGS(hba, lrbp));
 #else
+#define trace_android_vh_ufs_extra_query_retry(err, flag_res, i)
 #define trace_android_vh_ufs_gen_proc_devinfo(hba)
-#define trace_android_vh_ufs_latency_hist(hba, lrbp)
 #endif
 #endif /* _TRACE_HOOK_OPLUS_UFS_H */
 /* This part must be outside protection */

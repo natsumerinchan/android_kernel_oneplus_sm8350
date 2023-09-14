@@ -37,7 +37,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/pinctrl/consumer.h>
 #include "../include/wakelock.h"
-#include <soc/qcom/scm.h>
+//#include <soc/qcom/scm.h>
 #include "../include/oplus_fp_common.h"
 
 #undef dev_info

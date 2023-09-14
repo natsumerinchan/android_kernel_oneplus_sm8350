@@ -72,7 +72,6 @@ struct se_geni_rsc {
 	struct pinctrl_state *geni_gpio_active;
 	struct pinctrl_state *geni_gpio_sleep;
 #ifdef OPLUS_FEATURE_CHG_BASIC
-/* Add for gauge i2c reset */
 	struct pinctrl_state *geni_gpio_pulldown;
 	struct pinctrl_state *geni_gpio_pullup;
 #endif /* OPLUS_FEATURE_CHG_BASIC */
@@ -87,7 +86,6 @@ struct se_geni_rsc {
 #define PINCTRL_SLEEP	"sleep"
 #define PINCTRL_SHUTDOWN	"shutdown"
 #ifdef OPLUS_FEATURE_CHG_BASIC
-/* 2021/11/02, Add for gauge i2c reset */
 #define PINCTRL_PULLDOWN	"pulldown"
 #define PINCTRL_PULLUP		"pullup"
 #endif /* OPLUS_FEATURE_CHG_BASIC */
@@ -141,6 +139,7 @@ struct se_geni_rsc {
 #define SE_IRQ_EN			(0xE1C)
 #define SE_HW_PARAM_0			(0xE24)
 #define SE_HW_PARAM_1			(0xE28)
+#define SE_HW_PARAM_2			(0xE2C)
 #define SE_DMA_GENERAL_CFG		(0xE30)
 #define SE_DMA_DEBUG_REG0		(0xE40)
 #define SLAVE_MODE_EN			(BIT(3))
@@ -372,6 +371,9 @@ struct se_geni_rsc {
 #define DMA_RX_ACTIVE		(BIT(1))
 #define DMA_TX_STATE		(GENMASK(7, 4))
 #define DMA_RX_STATE		(GENMASK(11, 8))
+
+/* HW PARAM Register fields */
+#define GEN_HW_FSM_I2C		(BIT(15))
 
 #define DEFAULT_BUS_WIDTH	(4)
 

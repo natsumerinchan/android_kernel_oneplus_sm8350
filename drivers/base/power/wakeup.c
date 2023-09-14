@@ -853,6 +853,24 @@ void pm_get_active_wakeup_sources(char *pending_wakeup_source, size_t max)
 }
 EXPORT_SYMBOL_GPL(pm_get_active_wakeup_sources);
 
+#if defined(CONFIG_OPLUS_POWER_UTIL) && !defined(CONFIG_OPLUS_WAKELOCK_PROFILER)
+void oplus_pm_get_active_wakeup_sources(char *pending_wakeup_source, size_t max)
+{
+         struct wakeup_source *ws;
+         int len = 0;
+
+         rcu_read_lock();
+         list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
+                 if (ws->active && len < max) {
+                 len += scnprintf(pending_wakeup_source + len, max - len,
+                                 "%s ", ws->name);
+                 }
+         }
+         rcu_read_unlock();
+}
+EXPORT_SYMBOL_GPL(oplus_pm_get_active_wakeup_sources);
+#endif /*CONFIG_OPLUS_POWER_UTIL*/
+
 void pm_print_active_wakeup_sources(void)
 {
 	struct wakeup_source *ws;

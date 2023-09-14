@@ -73,19 +73,6 @@
 #include "ufs_quirks.h"
 #include "ufshci.h"
 
-#ifdef OPLUS_FEATURE_UFSPLUS
-#if defined(CONFIG_UFSFEATURE)
-#include "ufsfeature.h"
-#endif
-#if defined(CONFIG_SCSI_SKHPB)
-#include "ufshpb_skh.h"
-#endif
-#endif /* OPLUS_FEATURE_UFSPLUS */
-
-#ifdef CONFIG_OPLUS_FEATURE_PADL_STATISTICS
-#include "ufs_signal_quality.h"
-#endif
-
 #define UFSHCD "ufshcd"
 #define UFSHCD_DRIVER_VERSION "0.2"
 
@@ -608,6 +595,19 @@ struct ufshcd_clk_ctx {
 	ktime_t ts;
 	enum ufshcd_ctx ctx;
 };
+#ifdef CONFIG_OPLUS_UFS_DRIVER
+enum ufshcd_scsi_host_busy_ctxt {
+       SCALING_BUSY,
+       UFS_RESET_OR_EH_SCHEDULED,
+       LRB_IN_USE,
+       UFSHCD_HOLD,
+};
+
+struct ufshcd_blk_ctx {
+       ktime_t ts;
+       enum ufshcd_scsi_host_busy_ctxt busy_ctx;
+};
+#endif /*CONFIG_OPLUS_UFS_DRIVER*/
 
 #endif
 
@@ -670,6 +670,9 @@ struct ufs_stats {
 	u32 power_mode_change_cnt;
 	struct ufshcd_clk_ctx clk_hold;
 	struct ufshcd_clk_ctx clk_rel;
+#ifdef CONFIG_OPLUS_UFS_DRIVER
+	struct ufshcd_blk_ctx scsi_blk_reqs;
+#endif /*CONFIG_OPLUS_UFS_DRIVER*/
 #endif
 	/* uic specific errors */
 	struct ufs_err_reg_hist pa_err;
@@ -1028,26 +1031,7 @@ struct ufs_hba {
 
 	struct device		bsg_dev;
 	struct request_queue	*bsg_queue;
-#ifdef OPLUS_FEATURE_UFSPLUS
-#if defined(CONFIG_SCSI_SKHPB)
-	/* HPB support */
-	u32 skhpb_feat;
-	int skhpb_state;
-	int skhpb_max_regions;
-	struct delayed_work skhpb_init_work;
-	bool issue_ioctl;
-	struct skhpb_lu *skhpb_lup[UFS_UPIU_MAX_GENERAL_LUN];
-	struct work_struct skhpb_eh_work;
-	u32 skhpb_quirk;
-	u8 hpb_control_mode;
-#define SKHPB_U8_MAX 0xFF
-	u8 skhpb_quicklist_lu_enable[UFS_UPIU_MAX_GENERAL_LUN];
-#endif
 
-#if defined(CONFIG_SCSI_SKHPB)
-	struct scsi_device *sdev_ufs_lu[UFS_UPIU_MAX_GENERAL_LUN];
-#endif
-#endif
 #ifdef CONFIG_SCSI_UFS_CRYPTO
 	/* crypto */
 	union ufs_crypto_capabilities crypto_capabilities;
@@ -1056,9 +1040,7 @@ struct ufs_hba {
 	struct keyslot_manager *ksm;
 	void *crypto_DO_NOT_USE[8];
 #endif /* CONFIG_SCSI_UFS_CRYPTO */
-#ifdef CONFIG_OPLUS_FEATURE_PADL_STATISTICS
-	struct unipro_signal_quality_ctrl signalCtrl;
-#endif
+
 	bool wb_buf_flush_enabled;
 	bool wb_enabled;
 	struct delayed_work rpm_dev_flush_recheck_work;
@@ -1071,12 +1053,6 @@ struct ufs_hba {
 	bool restore;
 	bool abort_triggered_wlun;
 #endif
-
-#ifdef OPLUS_FEATURE_UFSPLUS
-#if defined(CONFIG_UFSFEATURE)
-	struct ufsf_feature ufsf;
-#endif
-#endif /* OPLUS_FEATURE_UFSPLUS */
 };
 
 /* Returns true if clocks can be gated. Otherwise false */
@@ -1163,11 +1139,7 @@ static inline bool ufshcd_is_auto_hibern8_enabled(struct ufs_hba *hba)
 
 static inline bool ufshcd_is_wb_allowed(struct ufs_hba *hba)
 {
-#if defined(OPLUS_FEATURE_UFSPLUS) && defined(CONFIG_UFSFEATURE) && defined(CONFIG_UFSTW)
-	return 0;
-#else
 	return hba->caps & UFSHCD_CAP_WB_EN;
-#endif
 }
 
 #define ufshcd_writel(hba, val, reg)	\
@@ -1341,15 +1313,6 @@ void ufshcd_fixup_dev_quirks(struct ufs_hba *hba, struct ufs_dev_fix *fixups);
 #define SD_ASCII_STD true
 #define SD_RAW false
 
-#ifdef OPLUS_FEATURE_UFSPLUS
-#if defined(CONFIG_UFSFEATURE)
-int ufshcd_exec_dev_cmd(struct ufs_hba *hba,
-			enum dev_cmd_type cmd_type, int timeout);
-void ufshcd_scsi_block_requests(struct ufs_hba *hba);
-void ufshcd_scsi_unblock_requests(struct ufs_hba *hba);
-int ufshcd_wait_for_doorbell_clr(struct ufs_hba *hba, u64 wait_timeout_us);
-#endif
-#endif /* OPLUS_FEATURE_UFSPLUS */
 int ufshcd_hold(struct ufs_hba *hba, bool async);
 void ufshcd_release(struct ufs_hba *hba);
 
@@ -1552,12 +1515,8 @@ static inline u8 ufshcd_scsi_to_upiu_lun(unsigned int scsi_lun)
 	else
 		return scsi_lun & UFS_UPIU_MAX_UNIT_NUM_ID;
 }
-#ifdef OPLUS_FEATURE_UFSPLUS
-#if defined(CONFIG_SCSI_SKHPB)
-int ufshcd_query_flag_retry(struct ufs_hba *hba,
-	enum query_opcode opcode, enum flag_idn idn, u8 index, bool *flag_res);
-#endif
-#endif
+
+
 int ufshcd_dump_regs(struct ufs_hba *hba, size_t offset, size_t len,
 		     const char *prefix);
 int ufshcd_uic_hibern8_enter(struct ufs_hba *hba);

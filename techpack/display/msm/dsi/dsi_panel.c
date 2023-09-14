@@ -10,9 +10,7 @@
 #include <linux/of_gpio.h>
 #include <linux/pwm.h>
 #include <video/mipi_display.h>
-#ifdef OPLUS_FEATURE_TP_BASIC
 #include <linux/msm_drm_notify.h>
-#endif /* OPLUS_FEATURE_TP_BASIC */
 
 #include "dsi_panel.h"
 #include "dsi_ctrl_hw.h"

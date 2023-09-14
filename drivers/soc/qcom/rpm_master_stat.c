@@ -61,6 +61,11 @@ struct msm_rpm_master_stats_platform_data {
 	s32 num_masters;
 	u32 master_offset;
 	u32 version;
+	#if defined(OPLUS_FEATURE_POWERINFO_RPMH) && defined(CONFIG_OPLUS_POWERINFO_RPMH)
+	struct kobj_attribute oplus_ka;
+	struct kobject *kobj;
+	struct dentry *dent;
+	#endif
 };
 
 static DEFINE_MUTEX(msm_rpm_master_stats_mutex);
@@ -89,6 +94,79 @@ struct msm_rpm_master_stats_private_data {
 	char buf[RPM_MASTERS_BUF_LEN];
 	struct msm_rpm_master_stats_platform_data *platform_data;
 };
+
+#if defined(OPLUS_FEATURE_POWERINFO_RPMH) && defined(CONFIG_OPLUS_POWERINFO_RPMH)
+struct msm_rpm_master_stats_platform_data *g_pdata;
+size_t oplus_get_rpm_master_stats(char *buf, size_t size)
+{
+
+	struct msm_rpm_master_stats_private_data *prvdata;
+	struct msm_rpm_master_stats rpm_master_stats;
+	int i = 0;
+	void __iomem *addr_offset;
+	uint32_t xo_clk = 19200000;
+	size_t buf_size = size;
+
+	if(g_pdata == NULL){
+		return 0;
+	}
+
+	mutex_lock(&msm_rpm_master_stats_mutex);
+	prvdata =
+		kzalloc(sizeof(struct msm_rpm_master_stats_private_data),
+			GFP_KERNEL);
+	if (!prvdata) {
+		pr_err("Error alloc mem\n");
+		goto exit0;
+	}
+	prvdata->len = 0;
+	prvdata->num_masters = g_pdata->num_masters;
+	prvdata->master_names = g_pdata->masters;
+	prvdata->platform_data = g_pdata;
+
+	prvdata->reg_base = ioremap(g_pdata->phys_addr_base,
+			g_pdata->phys_size);
+	if (!prvdata->reg_base) {
+		pr_err("Error remap rpm phys addr\n");
+		goto exit1;
+	}
+
+	for (i = 0; i < prvdata->num_masters; i++) {
+		addr_offset = prvdata->reg_base + i * g_pdata->master_offset;
+		memcpy(&rpm_master_stats, addr_offset, sizeof(struct msm_rpm_master_stats));
+		SNPRINTF(buf, size, "%s:%x:%llx\n",
+				GET_MASTER_NAME(i, prvdata),
+				rpm_master_stats.xo_count,
+				rpm_master_stats.xo_accumulated_duration / (xo_clk / 1000));
+		memset(&rpm_master_stats, 0, sizeof(struct msm_rpm_master_stats));
+	}
+	SNPRINTF(buf, size, "\n");
+
+	iounmap(prvdata->reg_base);
+exit1:
+	kfree(prvdata);
+exit0:
+	mutex_unlock(&msm_rpm_master_stats_mutex);
+	return buf_size - size;
+}
+
+static ssize_t oplus_msm_rpmh_master_stats_show(struct kobject *kobj,
+				struct kobj_attribute *attr, char *buf)
+{
+	extern secure_type_t get_secureType(void);
+
+	pr_info("get_secureType(): %d", get_secureType());
+	if (get_secureType() == 3)
+		return 0;
+	return oplus_get_rpm_master_stats(buf, RPM_MASTERS_BUF_LEN);
+}
+#else
+void oplus_get_rpm_master_stats(char *buf, size_t size)
+{
+	SNPRINTF(buf, size, "need add OPLUS_FEATURE_POWERINFO_RPMH"
+						" and OPLUS_FEATURE_POWERINFO_RPMH\n");
+}
+#endif
 
 static int msm_rpm_master_stats_file_close(struct inode *inode,
 		struct file *file)

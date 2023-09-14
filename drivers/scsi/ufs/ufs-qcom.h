@@ -13,9 +13,6 @@
 #ifdef CONFIG_SCSI_UFSHCD_QTI
 #include "unipro.h"
 #endif
-#ifdef OPLUS_FEATURE_UFSPLUS
-#include <uapi/scsi/ufs/ioctl.h>
-#endif /* OPLUS_FEATURE_UFSPLUS */
 
 #define MAX_UFS_QCOM_HOSTS	2
 #define MAX_U32                 (~(u32)0)
@@ -444,12 +441,14 @@ out:
 	return err;
 }
 
-#ifndef OPLUS_FEATURE_UFSPLUS
 /*
  *  IOCTL opcode for ufs queries has the following opcode after
  *  SCSI_IOCTL_GET_PCI
  */
 #define UFS_IOCTL_QUERY			0x5388
+/*feature-memorymonitor-v001-1-begin*/
+#define UFS_IOCTL_MONITOR       0x5392  /* For monitor access */
+/*feature-memorymonitor-v001-1-end*/
 
 /**
  * struct ufs_ioctl_query_data - used to transfer data to and from user via
@@ -496,5 +495,5 @@ struct ufs_ioctl_query_data {
 	 */
 	__u8 buffer[0];
 };
-#endif /* OPLUS_FEATURE_UFSPLUS */
+
 #endif /* UFS_QCOM_H_ */
