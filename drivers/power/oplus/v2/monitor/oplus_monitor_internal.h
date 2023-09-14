@@ -100,7 +100,6 @@ struct oplus_monitor {
 	bool led_on;
 	bool rechging;
 	bool ui_soc_ready;
-	int chg_cycle_status;
 
 	/* vooc */
 	bool vooc_online;
