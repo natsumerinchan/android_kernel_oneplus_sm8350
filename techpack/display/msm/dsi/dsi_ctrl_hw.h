@@ -22,6 +22,7 @@
 		fmt, c ? c->index : -1,	##__VA_ARGS__)
 
 #ifdef OPLUS_BUG_STABILITY
+#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
 #undef DSI_CTRL_HW_ERR
 #include <soc/oplus/system/oplus_mm_kevent_fb.h>
 #define DSI_CTRL_HW_ERR(c, fmt, ...) \
@@ -30,6 +31,7 @@
 			fmt, c ? c->index : -1,	##__VA_ARGS__); \
 		mm_fb_display_kevent_named(MM_FB_KEY_RATELIMIT_1H, fmt, ##__VA_ARGS__); \
 	} while(0)
+#endif /*CONFIG_OPLUS_FEATURE_MM_FEEDBACK*/
 #endif /* OPLUS_BUG_STABILITY */
 
 /**

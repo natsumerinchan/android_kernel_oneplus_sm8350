@@ -1,5 +1,6 @@
 /***************************************************************
 ** Copyright (C),  2020,  OPLUS Mobile Comm Corp.,  Ltd
+** VENDOR_EDIT
 ** File : oplus_ffl.c
 ** Description : oplus ffl feature
 ** Version : 1.0
@@ -14,9 +15,9 @@
 #include "dsi_display.h"
 #include "oplus_dsi_support.h"
 #include "oplus_onscreenfingerprint.h"
-/*#include "oplus_mm_kevent_fb.h"*/
-
-
+#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
+#include <soc/oplus/system/oplus_mm_kevent_fb.h>
+#endif //CONFIG_OPLUS_FEATURE_MM_FEEDBACK
 #define FFL_LEVEL_START 2
 #define FFL_LEVEL_END  236
 #define FFLUPRARE  1
@@ -38,8 +39,6 @@ EXPORT_SYMBOL(oplus_ffl_trigger_finish);
 
 void oplus_ffl_set(int enable)
 {
-	/*unsigned char payload[150] = "";*/
-
 	mutex_lock(&oplus_ffl_lock);
 
 	if (enable != is_ffl_enable) {
@@ -54,11 +53,17 @@ void oplus_ffl_set(int enable)
 
 	mutex_unlock(&oplus_ffl_lock);
 
+	#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
+	#ifdef NEED_FEEDBACK_TO_DISPLAY
 	if ((is_ffl_enable == FFL_TRIGGLE_CONTROL) && ffl_work_running) {
-		/*scnprintf(payload, sizeof(payload), "NULL$$EventID@@%d$$fflset@@%d",
-			  OPLUS_MM_DIRVER_FB_EVENT_ID_FFLSET, enable);
-		upload_mm_kevent_fb_data(OPLUS_MM_DIRVER_FB_EVENT_MODULE_DISPLAY, payload);*/
+		mm_fb_kevent(OPLUS_MM_DIRVER_FB_EVENT_TO_DISPLAY,
+		    OPLUS_MM_DIRVER_FB_EVENT_ID_FFLSET,
+		    "fflset", MM_FB_KEY_RATELIMIT_1H,
+		    "EventID@@%d$$fflset@@%d",
+		    OPLUS_MM_DIRVER_FB_EVENT_ID_FFLSET, enable);
 	}
+	#endif //NEED_FEEDBACK_TO_DISPLAY
+	#endif //CONFIG_OPLUS_FEATURE_MM_FEEDBACK
 }
 
 int oplus_display_panel_get_ffl(void *buf)
