@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -59,9 +59,6 @@
 #include "soc/qcom/secure_buffer.h"
 #include <linux/qtee_shmbridge.h>
 #include <linux/haven/hh_irq_lend.h>
-#if defined(OPLUS_FEATURE_PXLW_IRIS5) || defined(OPLUS_FEATURE_PXLW_IRISSOFT)
-#include "iris/dsi_iris5_api.h"
-#endif
 
 #define CREATE_TRACE_POINTS
 #include "sde_trace.h"
@@ -71,7 +68,11 @@
 #endif
 
 #ifdef OPLUS_BUG_STABILITY
-#include "oplus_adfr.h"
+#include "oplus_dc_diming.h"
+#endif
+
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_THEIA)
+#include <soc/oplus/system/theia_send_event.h> /* for theia_send_event etc */
 #endif
 
 /* defines for secure channel call */
@@ -1161,9 +1162,14 @@ static void sde_kms_prepare_commit(struct msm_kms *kms,
 	rc = pm_runtime_get_sync(sde_kms->dev->dev);
 	if (rc < 0) {
 		SDE_ERROR("failed to enable power resources %d\n", rc);
-#ifdef OPLUS_BUG_STABILITY
-		SDE_MM_ERROR("DisplayDriverID@@407$$failed to enable power resources %d\n", rc);
-#endif /* OPLUS_BUG_STABILITY */
+		#ifdef OPLUS_BUG_STABILITY
+		#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
+		SDE_MM_ERROR("DisplayDriverID@@415$$failed to enable power resources %d\n", rc);
+		#endif /*CONFIG_OPLUS_FEATURE_MM_FEEDBACK*/
+		#endif /* OPLUS_BUG_STABILITY */
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_THEIA)
+		theia_send_event(THEIA_EVENT_HARDWARE_ERROR, THEIA_LOGINFO_KERNEL_LOG, current->pid, "failed to enable power resources");
+#endif
 		SDE_EVT32(rc, SDE_EVTLOG_ERROR);
 		goto end;
 	}
@@ -1538,25 +1544,11 @@ static void sde_kms_complete_commit(struct msm_kms *kms,
 	for_each_old_crtc_in_state(old_state, crtc, old_crtc_state, i)
 		_sde_kms_release_splash_resource(sde_kms, crtc);
 
-#ifdef OPLUS_BUG_STABILITY
-	if (oplus_adfr_is_support()) {
-		if (oplus_adfr_get_vsync_mode() == OPLUS_DOUBLE_TE_VSYNC) {
-			SDE_ATRACE_BEGIN("sde_kms_adfr_vsync_source_switch");
-			for_each_old_crtc_in_state(old_state, crtc, old_crtc_state, i) {
-				sde_kms_adfr_vsync_source_switch(kms, crtc);
-			}
-			SDE_ATRACE_END("sde_kms_adfr_vsync_source_switch");
-		} else if (oplus_adfr_get_vsync_mode() == OPLUS_EXTERNAL_TE_TP_VSYNC) {
-			SDE_ATRACE_BEGIN("sde_kms_adfr_vsync_switch");
-			for_each_old_crtc_in_state(old_state, crtc, old_crtc_state, i) {
-				sde_kms_adfr_vsync_switch(kms, crtc);
-			}
-			SDE_ATRACE_END("sde_kms_adfr_vsync_switch");
-		}
-	}
-#endif
-
 	SDE_EVT32_VERBOSE(SDE_EVTLOG_FUNC_EXIT);
+
+#ifdef OPLUS_BUG_STABILITY
+	oplus_notify_hbm_off();
+#endif
 	SDE_ATRACE_END("sde_kms_complete_commit");
 }
 
@@ -1791,12 +1783,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.install_properties = NULL,
 		.set_allowed_mode_switch = dsi_conn_set_allowed_mode_switch,
 		.get_qsync_min_fps = dsi_display_get_qsync_min_fps,
-#ifdef OPLUS_BUG_STABILITY
-		// enable qsync on/off cmds
-		.prepare_commit = dsi_display_pre_commit,
-#else
 		.prepare_commit = dsi_conn_prepare_commit,
-#endif
 		.get_num_lm_from_mode = dsi_conn_get_lm_from_mode,
 	};
 	static const struct sde_connector_ops wb_ops = {
@@ -3950,7 +3937,6 @@ retry:
 				DRM_ERROR("failed to get crtc %d state\n",
 						conn->state->crtc->base.id);
 				drm_connector_list_iter_end(&conn_iter);
-				ret = -EINVAL;
 				goto unlock;
 			}
 
@@ -3989,12 +3975,6 @@ unlock:
 		drm_modeset_backoff(&ctx);
 		goto retry;
 	}
-
-	if ((ret || !num_crtcs) && sde_kms->suspend_state) {
-		drm_atomic_state_put(sde_kms->suspend_state);
-		sde_kms->suspend_state = NULL;
-	}
-
 	drm_modeset_drop_locks(&ctx);
 	drm_modeset_acquire_fini(&ctx);
 
@@ -4035,8 +4015,7 @@ static int sde_kms_pm_resume(struct device *dev)
 
 	SDE_EVT32(sde_kms->suspend_state != NULL);
 
-	if (sde_kms->suspend_state)
-		drm_mode_config_reset(ddev);
+	drm_mode_config_reset(ddev);
 
 	drm_modeset_acquire_init(&ctx, 0);
 retry:
@@ -4115,9 +4094,6 @@ static const struct msm_kms_funcs kms_funcs = {
 	.check_for_splash = sde_kms_check_for_splash,
 	.get_mixer_count = sde_kms_get_mixer_count,
 	.get_dsc_count = sde_kms_get_dsc_count,
-#if defined(OPLUS_FEATURE_PXLW_IRIS5) || defined(OPLUS_FEATURE_PXLW_IRISSOFT)
-	.iris_operate = iris_sde_kms_iris_operate,
-#endif
 };
 
 static int _sde_kms_mmu_destroy(struct sde_kms *sde_kms)

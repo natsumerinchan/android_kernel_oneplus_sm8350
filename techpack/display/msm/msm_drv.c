@@ -50,12 +50,8 @@
 #include "msm_mmu.h"
 #include "sde_wb.h"
 #include "sde_dbg.h"
-#if defined(OPLUS_FEATURE_PXLW_IRIS5) || defined(OPLUS_FEATURE_PXLW_SOFT_IRIS)
-#include "dsi/iris/dsi_iris5_api.h"
-#endif
-
 #ifdef OPLUS_BUG_STABILITY
-#include "oplus_adfr.h"
+#include <soc/oplus/system/oplus_project.h>
 #endif
 
 #if defined(OPLUS_FEATURE_SCHED_ASSIST) && defined(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
@@ -97,6 +93,12 @@
 	} while (0)
 
 static DEFINE_MUTEX(msm_release_lock);
+
+
+#ifdef OPLUS_BUG_STABILITY
+extern int __init lcd_bias_init(void);
+extern void __exit lcd_bias_exit(void);
+#endif
 
 static void msm_fb_output_poll_changed(struct drm_device *dev)
 {
@@ -428,12 +430,6 @@ static int msm_drm_uninit(struct device *dev)
 		}
 	}
 
-#ifdef OPLUS_BUG_STABILITY
-	if (oplus_adfr_is_support()) {
-		oplus_adfr_thread_destroy(priv);
-	}
-#endif
-
 	drm_kms_helper_poll_fini(ddev);
 	if (kms && kms->funcs)
 		kms->funcs->debugfs_destroy(kms);
@@ -732,19 +728,6 @@ static int msm_drm_display_thread_create(struct sched_param param,
 		return ret;
 	}
 
-#ifdef OPLUS_BUG_STABILITY
-	/**
-	 * Use a seperate adfr thread for fake frame.
-	 * Because fake frame maybe causes crtc commit/event more heavy.
-	 * This can lead to commit miss TE/retire event delay
-	 */
-	if (oplus_adfr_is_support()) {
-		if (oplus_adfr_thread_create(&param, priv, ddev, dev)) {
-			return -EINVAL;
-		}
-	}
-#endif
-
 	return 0;
 
 }
@@ -887,10 +870,6 @@ static int msm_drm_component_init(struct device *dev)
 	INIT_LIST_HEAD(&priv->vm_client_list);
 
 	mutex_init(&priv->vm_client_lock);
-
-#ifdef OPLUS_BUG_STABILITY
-	mutex_init(&priv->dspp_lock);
-#endif /* OPLUS_BUG_STABILITY */
 
 	/* Bind all our sub-components: */
 	ret = msm_component_bind_all(dev, ddev);
@@ -1776,10 +1755,6 @@ static const struct drm_ioctl_desc msm_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(MSM_RMFB2, msm_ioctl_rmfb2, DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(MSM_POWER_CTRL, msm_ioctl_power_ctrl,
 			DRM_RENDER_ALLOW),
-#if defined(OPLUS_FEATURE_PXLW_IRIS5) || defined(OPLUS_FEATURE_PXLW_SOFT_IRIS)
-	DRM_IOCTL_DEF_DRV(MSM_IRIS_OPERATE_CONF, msm_ioctl_iris_operate_conf, DRM_UNLOCKED|DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MSM_IRIS_OPERATE_TOOL, msm_ioctl_iris_operate_tool, DRM_UNLOCKED|DRM_RENDER_ALLOW),
-#endif
 	DRM_IOCTL_DEF_DRV(MSM_DISPLAY_HINT, msm_ioctl_display_hint_ops,
 			DRM_UNLOCKED),
 };
@@ -2294,6 +2269,16 @@ static int __init msm_drm_register(void)
 	msm_edp_register();
 	msm_hdmi_register();
 	sde_wb_register();
+#ifdef OPLUS_BUG_STABILITY
+	if(is_project(22667) || is_project(22668) || is_project(22601) || is_project(22602) \
+	|| is_project(21653) || is_project(21654) || is_project(21746) || is_project(0x2174A) \
+	|| is_project(21707) || is_project(21708) || is_project(0x216E9) || is_project(0x216EA) \
+	|| is_project(21629) || is_project(0x2162B) || is_project(21341) || is_project(21141) || is_project(21039) \
+	|| is_project(22821) || is_project(22871) || is_project(22872) || is_project(22873) \
+	|| is_project(22874) || is_project(22045) || is_project(22247) || is_project(22248)) {
+		lcd_bias_init();
+	}
+#endif
 	return platform_driver_register(&msm_platform_driver);
 }
 
@@ -2301,6 +2286,16 @@ static void __exit msm_drm_unregister(void)
 {
 	DBG("fini");
 	platform_driver_unregister(&msm_platform_driver);
+#ifdef OPLUS_BUG_STABILITY
+	if(is_project(22667) || is_project(22668) || is_project(22601) || is_project(22602) \
+	|| is_project(21653) || is_project(21654) || is_project(21746) || is_project(0x2174A) \
+	|| is_project(21707) || is_project(21708) || is_project(0x216E9) || is_project(0x216EA) \
+	|| is_project(21629) || is_project(0x2162B) || is_project(21341) || is_project(21141) || is_project(21039) \
+	|| is_project(22821) || is_project(22871) || is_project(22872) || is_project(22873) \
+	|| is_project(22874) || is_project(22045) || is_project(22247) || is_project(22248)) {
+		lcd_bias_exit();
+	}
+#endif
 	sde_wb_unregister();
 	msm_hdmi_unregister();
 	msm_edp_unregister();
