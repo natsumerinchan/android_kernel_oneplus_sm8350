@@ -1483,8 +1483,26 @@ static void fts3658u_main_register_read(struct seq_file *s, void *chip_data)
 static int fts_enable_black_gesture(struct chip_data_ft3658u *ts_data,
                                     bool enable)
 {
+	int i = 0;
+	int ret = 0;
+	int config1 = 0x50;
+
 	TPD_INFO("MODE_GESTURE, write 0xD0=%d", enable);
-	return touch_i2c_write_byte(ts_data->client, FTS_REG_GESTURE_EN, enable);
+
+	if (enable) {
+		for (i = 0; i < 5 ; i++) {
+			ret = touch_i2c_write_byte(ts_data->client, FTS_REG_GESTURE_CONFIG1, config1);
+			ret = touch_i2c_write_byte(ts_data->client, FTS_REG_GESTURE_EN, enable);
+			msleep(1);
+			ret = touch_i2c_read_byte(ts_data->client, FTS_REG_GESTURE_EN);
+			if (1 == ret)
+				break;
+		}
+	} else {
+		ret = touch_i2c_write_byte(ts_data->client, FTS_REG_GESTURE_EN, enable);
+	}
+
+	return ret;
 }
 
 static int fts_enable_edge_limit(struct chip_data_ft3658u *ts_data, int enable)
@@ -2339,12 +2357,7 @@ static int fts3658u_refresh_switch(void *chip_data, int fps)
 		fps == 60 ? FTS_120HZ_REPORT_RATE : FTS_180HZ_REPORT_RATE);
 }
 
-#ifdef FTS_KIT
 static struct oplus_touchpanel_operations fts_ops = {
-#endif
-#ifndef FTS_KIT
-static struct oplus_touchpanel_operations fts_ops = {
-#endif
 	.power_control              = fts3658u_power_control,
 	.get_vendor                 = fts3658u_get_vendor,
 	.get_chip_info              = fts3658u_get_chip_info,
@@ -2501,7 +2514,7 @@ static int fts3658u_tp_probe(struct i2c_client * client,
 
 #ifdef FTS_KIT
 	/*proc/touchpanel/baseline_test*/
-	/*create baseline_test, oplus driver delete*/
+	/*create baseline_test, oplus     driver delete*/
 	fts_create_proc_baseline_test(ts);
 #endif
 
