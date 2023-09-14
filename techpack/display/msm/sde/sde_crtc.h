@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -468,7 +468,6 @@ struct sde_crtc_state {
 	bool fingerprint_pressed;
 	bool fingerprint_defer_sync;
 	struct sde_hw_dim_layer *fingerprint_dim_layer;
-	bool aod_skip_pcc;
 #endif
 };
 
@@ -976,5 +975,11 @@ void sde_crtc_reset_sw_state(struct drm_crtc *crtc);
  * @cstate:      Pointer to drm crtc state
  */
 void _sde_crtc_clear_dim_layers_v1(struct drm_crtc_state *state);
+
+/**
+ * sde_crtc_cancel_delayed_work - cancel any pending work items for a given crtc
+ * @crtc: Pointer to DRM crtc object
+ */
+void sde_crtc_cancel_delayed_work(struct drm_crtc *crtc);
 
 #endif /* _SDE_CRTC_H_ */
