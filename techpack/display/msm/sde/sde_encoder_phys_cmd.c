@@ -10,13 +10,13 @@
 #include "sde_core_irq.h"
 #include "sde_formats.h"
 #include "sde_trace.h"
-#if defined(OPLUS_FEATURE_PXLW_IRIS5)
-#include "iris/dsi_iris5_api.h"
-#endif
-
 #ifdef OPLUS_BUG_STABILITY
-#include "oplus_adfr.h"
+#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
 #include <soc/oplus/system/oplus_mm_kevent_fb.h>
+#endif /* CONFIG_OPLUS_FEATURE_MM_FEEDBACK */
+#endif /*OPLUS_BUG_STABILITY*/
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_THEIA)
+#include <soc/oplus/system/theia_send_event.h> /* for theia_send_event etc */
 #endif
 
 #define SDE_DEBUG_CMDENC(e, fmt, ...) SDE_DEBUG("enc%d intf%d " fmt, \
@@ -41,14 +41,8 @@
 #define DEFAULT_TEARCHECK_SYNC_THRESH_CONTINUE	4
 
 #define SDE_ENC_WR_PTR_START_TIMEOUT_US 20000
-#if defined(OPLUS_FEATURE_PXLW_IRIS5)
-/* decrease the polling time interval, reduce polling time */
-#define AUTOREFRESH_SEQ1_POLL_TIME      (iris_is_dual_supported() ? 1000 : 2000)
-#define AUTOREFRESH_SEQ2_POLL_TIME      (iris_is_dual_supported() ? 2000 : 25000)
-#else
 #define AUTOREFRESH_SEQ1_POLL_TIME	2000
 #define AUTOREFRESH_SEQ2_POLL_TIME	25000
-#endif
 #define AUTOREFRESH_SEQ2_POLL_TIMEOUT	1000000
 
 static inline int _sde_encoder_phys_cmd_get_idle_timeout(
@@ -82,12 +76,6 @@ static uint64_t _sde_encoder_phys_cmd_get_autorefresh_property(
 
 	if (!conn || !conn->state)
 		return 0;
-#if defined(OPLUS_FEATURE_PXLW_IRIS5)
-	if (iris_is_chip_supported()) {
-		if (iris_secondary_display_autorefresh(phys_enc))
-			return 1;
-	}
-#endif
 
 	return sde_connector_get_property(conn->state,
 				CONNECTOR_PROP_AUTOREFRESH);
@@ -223,13 +211,6 @@ static void sde_encoder_phys_cmd_pp_tx_done_irq(void *arg, int irq_idx)
 	SDE_EVT32_IRQ(DRMID(phys_enc->parent),
 			phys_enc->hw_pp->idx - PINGPONG_0, event, scheduler_status);
 
-#ifdef OPLUS_BUG_STABILITY
-	if (oplus_adfr_is_support()) {
-		atomic_set(&phys_enc->frame_state, 1);
-		SDE_DEBUG("frame_state = %d\n", atomic_read(&phys_enc->frame_state));
-	}
-#endif
-
 	/* Signal any waiting atomic commit thread */
 	wake_up_all(&phys_enc->pending_kickoff_wq);
 	SDE_ATRACE_END("pp_done_irq");
@@ -269,22 +250,10 @@ static void sde_encoder_phys_cmd_te_rd_ptr_irq(void *arg, int irq_idx)
 	struct sde_hw_pp_vsync_info info[MAX_CHANNELS_PER_ENC] = {{0}};
 	struct sde_encoder_phys_cmd_te_timestamp *te_timestamp;
 	unsigned long lock_flags;
-#ifdef OPLUS_BUG_STABILITY
-	static unsigned long now;
-#endif
 	struct drm_display_mode *mode;
 
 	if (!phys_enc || !phys_enc->hw_pp || !phys_enc->hw_intf)
 		return;
-
-#ifdef OPLUS_BUG_STABILITY
-	// The initial value of the now variable is 0,
-	// but we don't care about the first calculation error.
-	if (oplus_adfr_is_support()) {
-		SDE_DEBUG("rd_ptr_irq interval: %lu\n", ((unsigned long)ktime_to_us(ktime_get()) - now));
-		now = (unsigned long)ktime_to_us(ktime_get());
-	}
-#endif
 
 	SDE_ATRACE_BEGIN("rd_ptr_irq");
 	cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
@@ -320,20 +289,6 @@ static void sde_encoder_phys_cmd_te_rd_ptr_irq(void *arg, int irq_idx)
 		phys_enc->parent_ops.handle_vblank_virt(phys_enc->parent,
 			phys_enc);
 
-#ifdef OPLUS_BUG_STABILITY
-	if (oplus_adfr_is_support()) {
-		if(atomic_read(&phys_enc->frame_state) == 1 ) {
-			atomic_set(&phys_enc->frame_state, 0);
-		}
-		SDE_DEBUG("frame_state = %d\n", atomic_read(&phys_enc->frame_state));
-
-		if (oplus_adfr_auto_on_cmd_filter_get()) {
-			/* when the rd_ptr_irq comes there is no need to filter auto on cmd anymore */
-			oplus_adfr_auto_on_cmd_filter_set(false);
-		}
-	}
-#endif
-
 	atomic_add_unless(&cmd_enc->pending_vblank_cnt, -1, 0);
 	wake_up_all(&cmd_enc->pending_vblank_wq);
 	SDE_ATRACE_END("rd_ptr_irq");
@@ -345,10 +300,6 @@ static void sde_encoder_phys_cmd_wr_ptr_irq(void *arg, int irq_idx)
 	struct sde_hw_ctl *ctl;
 	u32 event = 0;
 	struct sde_hw_pp_vsync_info info[MAX_CHANNELS_PER_ENC] = {{0}};
-#ifdef OPLUS_BUG_STABILITY
-	static u64 now;
-	u64 interval;
-#endif
 	struct sde_encoder_phys_cmd *cmd_enc;
 
 	if (!phys_enc || !phys_enc->hw_ctl)
@@ -375,20 +326,6 @@ static void sde_encoder_phys_cmd_wr_ptr_irq(void *arg, int irq_idx)
 		ctl->idx - CTL_0, event,
 		info[0].pp_idx, info[0].intf_idx, info[0].wr_ptr_line_count,
 		info[1].pp_idx, info[1].intf_idx, info[1].wr_ptr_line_count);
-
-#ifdef OPLUS_BUG_STABILITY
-	if (oplus_adfr_is_support()) {
-		atomic_set(&phys_enc->frame_state, 2);
-		SDE_DEBUG("frame_state = %d\n", atomic_read(&phys_enc->frame_state));
-
-		interval = (u64)ktime_to_us(ktime_get()) - now;
-		SDE_DEBUG("wr_ptr_irq interval: %llu\n", interval);
-		if (interval < 13600) {
-			SDE_DEBUG("kVRR wr_ptr_irq is too close, interval: %llu\n", interval);
-		}
-		now = (u64)ktime_to_us(ktime_get());
-	}
-#endif
 
 	/* Signal any waiting wr_ptr start interrupt */
 	wake_up_all(&phys_enc->pending_kickoff_wq);
@@ -587,11 +524,15 @@ static int _sde_encoder_phys_cmd_handle_ppdone_timeout(
 				phys_enc->hw_pp->idx - PINGPONG_0,
 				phys_enc->hw_ctl->idx - CTL_0,
 				pending_kickoff_cnt);
-#ifdef OPLUS_BUG_STABILITY
-		mm_fb_display_kevent("DisplayDriverID@@403$$", MM_FB_KEY_RATELIMIT_NONE,
-				"ppdone timeout failed pp:%d kickoff timeout", phys_enc->hw_pp->idx - PINGPONG_0);
-#endif /* OPLUS_BUG_STABILITY */
 
+#ifdef OPLUS_BUG_STABILITY
+#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
+		mm_fb_display_kevent("DisplayDriverID@@409$$", MM_FB_KEY_RATELIMIT_NONE, "ppdone timeout failed pp:%d kickoff timeout", phys_enc->hw_pp->idx - PINGPONG_0);
+#endif /*CONFIG_OPLUS_FEATURE_MM_FEEDBACK*/
+#endif /* OPLUS_BUG_STABILITY */
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_THEIA)
+		theia_send_event(THEIA_EVENT_PTR_TIMEOUT_HANG, THEIA_LOGINFO_KERNEL_LOG, current->pid, "wr_ptr_irq timeout failed");
+#endif
 		SDE_EVT32(DRMID(phys_enc->parent), SDE_EVTLOG_FATAL);
 		mutex_lock(phys_enc->vblank_ctl_lock);
 		sde_encoder_helper_unregister_irq(phys_enc, INTR_IDX_RDPTR);
@@ -989,14 +930,6 @@ static int _get_tearcheck_threshold(struct sde_encoder_phys *phys_enc)
 	mode = &phys_enc->cached_mode;
 	qsync_mode = sde_connector_get_qsync_mode(conn);
 
-#ifdef OPLUS_BUG_STABILITY
-	if (oplus_adfr_is_support()) {
-		SDE_ATRACE_BEGIN("get_tearcheck_threshold");
-		SDE_ATRACE_INT("qsync_mode", qsync_mode);
-		SDE_ATRACE_INT("qsync_minfps", sde_connector_get_qsync_dynamic_min_fps(conn));
-	}
-#endif
-
 	if (mode && (qsync_mode == SDE_RM_QSYNC_CONTINUOUS_MODE)) {
 		u32 qsync_min_fps = 0;
 		u32 default_fps = mode->vrefresh;
@@ -1009,17 +942,6 @@ static int _get_tearcheck_threshold(struct sde_encoder_phys *phys_enc)
 		if (phys_enc->parent_ops.get_qsync_fps)
 			phys_enc->parent_ops.get_qsync_fps(
 				phys_enc->parent, &qsync_min_fps, 0);
-
-#ifdef OPLUS_BUG_STABILITY
-		if (oplus_adfr_is_support()) {
-			qsync_min_fps = sde_connector_get_qsync_dynamic_min_fps(conn);
-			SDE_DEBUG_CMDENC(cmd_enc,
-				"qsync updated: %u, mode: %u, min fps:%u, default:%u\n",
-				sde_connector_is_qsync_updated(conn),
-				qsync_mode,
-				qsync_min_fps, default_fps);
-		}
-#endif
 
 		if (!qsync_min_fps || !default_fps || !yres) {
 			SDE_ERROR_CMDENC(cmd_enc,
@@ -1059,15 +981,6 @@ static int _get_tearcheck_threshold(struct sde_encoder_phys *phys_enc)
 	}
 
 exit:
-
-#ifdef OPLUS_BUG_STABILITY
-	if (oplus_adfr_is_support()) {
-		SDE_DEBUG_CMDENC(cmd_enc, "kVRR : qsync_mode %d, qsync_minfps %d, threshold_lines %d\n",
-			qsync_mode, sde_connector_get_qsync_dynamic_min_fps(conn), threshold_lines);
-		SDE_ATRACE_END("get_tearcheck_threshold");
-		SDE_ATRACE_INT("threshold_lines", threshold_lines);
-	}
-#endif
 
 	return threshold_lines;
 }
@@ -1463,9 +1376,7 @@ static int sde_encoder_phys_cmd_prepare_for_kickoff(
 			to_sde_encoder_phys_cmd(phys_enc);
 	int ret = 0;
 	bool recovery_events;
-#ifdef OPLUS_BUG_STABILITY
-	struct sde_connector *c_conn = NULL;
-#endif
+
 	if (!phys_enc || !phys_enc->hw_pp) {
 		SDE_ERROR("invalid encoder\n");
 		return -EINVAL;
@@ -1506,35 +1417,6 @@ static int sde_encoder_phys_cmd_prepare_for_kickoff(
 		phys_enc->recovered = false;
 	}
 
-#ifdef OPLUS_BUG_STABILITY
-	if (oplus_adfr_is_support()) {
-		c_conn = to_sde_connector(phys_enc->connector);
-		oplus_adfr_force_qsync_mode_off(phys_enc->connector);
-		if (c_conn->qsync_deferred_window_status == DEFERRED_WINDOW_START) {
-			/* window should be set in the next frame since ddic cmd take effect */
-			c_conn->qsync_deferred_window_status = DEFERRED_WINDOW_NEXT_FRAME;
-		} else if (c_conn->qsync_deferred_window_status == DEFERRED_WINDOW_NEXT_FRAME ||
-					c_conn->qsync_deferred_window_status == SET_WINDOW_IMMEDIATELY) {
-			SDE_ATRACE_BEGIN("update_qsync");
-			c_conn->qsync_dynamic_min_fps = c_conn->qsync_curr_dynamic_min_fps;
-			tc_cfg.sync_threshold_start = _get_tearcheck_threshold(
-					phys_enc);
-			if (phys_enc->has_intf_te &&
-					phys_enc->hw_intf->ops.update_tearcheck)
-				phys_enc->hw_intf->ops.update_tearcheck(
-						phys_enc->hw_intf, &tc_cfg);
-			else if (phys_enc->hw_pp->ops.update_tearcheck)
-				phys_enc->hw_pp->ops.update_tearcheck(
-						phys_enc->hw_pp, &tc_cfg);
-			SDE_EVT32(DRMID(phys_enc->parent), tc_cfg.sync_threshold_start);
-			c_conn->qsync_updated = true;
-			phys_enc->qsync_sync_threshold_start = tc_cfg.sync_threshold_start;
-			phys_enc->current_sync_threshold_start = phys_enc->qsync_sync_threshold_start;
-			c_conn->qsync_deferred_window_status = DEFERRED_WINDOW_END;
-			SDE_ATRACE_END("update_qsync");
-		}
-	} else {
-#endif
 	if (sde_connector_is_qsync_updated(phys_enc->connector)) {
 		tc_cfg.sync_threshold_start = _get_tearcheck_threshold(
 				phys_enc);
@@ -1547,14 +1429,6 @@ static int sde_encoder_phys_cmd_prepare_for_kickoff(
 					phys_enc->hw_pp, &tc_cfg);
 		SDE_EVT32(DRMID(phys_enc->parent), tc_cfg.sync_threshold_start);
 	}
-
-#ifdef OPLUS_BUG_STABILITY
-	}
-	// without qsync updated, update qsync window still if qsync enable
-	if (oplus_adfr_is_support()) {
-		oplus_adfr_adjust_tearcheck_for_dynamic_qsync(phys_enc);
-	}
-#endif
 
 	SDE_DEBUG_CMDENC(cmd_enc, "pp:%d pending_cnt %d\n",
 			phys_enc->hw_pp->idx - PINGPONG_0,
@@ -1743,9 +1617,11 @@ static int _sde_encoder_phys_cmd_handle_wr_ptr_timeout(
 		SDE_ERROR_CMDENC(cmd_enc,
 			"wr_ptr_irq wait failed, switch_te:%d\n", switch_te);
 		SDE_EVT32(DRMID(phys_enc->parent), switch_te, SDE_EVTLOG_ERROR);
+
 #ifdef OPLUS_BUG_STABILITY
-		mm_fb_display_kevent("DisplayDriverID@@418$$", MM_FB_KEY_RATELIMIT_30MIN,
-				"wr_ptr_irq timeout failed switch_te:%d", switch_te);
+#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
+		mm_fb_display_kevent("DisplayDriverID@@418$$", MM_FB_KEY_RATELIMIT_30MIN, "wr_ptr_irq timeout failed switch_te:%d", switch_te);
+#endif /*CONFIG_OPLUS_FEATURE_MM_FEEDBACK*/
 #endif
 
 		if (sde_encoder_phys_cmd_is_master(phys_enc) &&
@@ -1913,15 +1789,7 @@ static void _sde_encoder_autorefresh_disable_seq1(
 	_sde_encoder_phys_cmd_config_autorefresh(phys_enc, 0);
 
 	do {
-#if defined(OPLUS_FEATURE_PXLW_IRIS5)
-		if (iris_is_dual_supported())
-			usleep_range(AUTOREFRESH_SEQ1_POLL_TIME,
-				AUTOREFRESH_SEQ1_POLL_TIME + 1);
-		else
-			udelay(AUTOREFRESH_SEQ1_POLL_TIME);
-#else
 		udelay(AUTOREFRESH_SEQ1_POLL_TIME);
-#endif
 		if ((trial * AUTOREFRESH_SEQ1_POLL_TIME)
 				> (KICKOFF_TIMEOUT_MS * USEC_PER_MSEC)) {
 			SDE_ERROR_CMDENC(cmd_enc,
@@ -2010,23 +1878,19 @@ static void _sde_encoder_autorefresh_disable_seq2(
 	}
 }
 
-static void sde_encoder_phys_cmd_prepare_commit(
-		struct sde_encoder_phys *phys_enc)
+static void _sde_encoder_phys_disable_autorefresh(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_cmd *cmd_enc =
 		to_sde_encoder_phys_cmd(phys_enc);
 
-	if (!phys_enc)
+	if (!phys_enc || !sde_encoder_phys_cmd_is_master(phys_enc))
 		return;
 
-	if (!sde_encoder_phys_cmd_is_master(phys_enc))
+	if (!sde_encoder_phys_cmd_is_autorefresh_enabled(phys_enc))
 		return;
 
 	SDE_EVT32(DRMID(phys_enc->parent), phys_enc->intf_idx - INTF_0,
 			cmd_enc->autorefresh.cfg.enable);
-
-	if (!sde_encoder_phys_cmd_is_autorefresh_enabled(phys_enc))
-		return;
 
 	sde_encoder_phys_cmd_connect_te(phys_enc, false);
 	_sde_encoder_autorefresh_disable_seq1(phys_enc);
@@ -2034,6 +1898,11 @@ static void sde_encoder_phys_cmd_prepare_commit(
 	sde_encoder_phys_cmd_connect_te(phys_enc, true);
 
 	SDE_DEBUG_CMDENC(cmd_enc, "autorefresh disabled successfully\n");
+}
+
+static void sde_encoder_phys_cmd_prepare_commit(struct sde_encoder_phys *phys_enc)
+{
+	return _sde_encoder_phys_disable_autorefresh(phys_enc);
 }
 
 static void sde_encoder_phys_cmd_trigger_start(
@@ -2129,6 +1998,7 @@ static void sde_encoder_phys_cmd_init_ops(struct sde_encoder_phys_ops *ops)
 	ops->setup_vsync_source = sde_encoder_phys_cmd_setup_vsync_source;
 	ops->setup_misr = sde_encoder_helper_setup_misr;
 	ops->collect_misr = sde_encoder_helper_collect_misr;
+	ops->disable_autorefresh = _sde_encoder_phys_disable_autorefresh;
 }
 
 static inline bool sde_encoder_phys_cmd_intf_te_supported(
@@ -2253,14 +2123,6 @@ struct sde_encoder_phys *sde_encoder_phys_cmd_init(
 	for (i = 0; i < MAX_TE_PROFILE_COUNT; i++)
 		list_add(&cmd_enc->te_timestamp[i].list,
 				&cmd_enc->te_timestamp_list);
-
-#ifdef OPLUS_BUG_STABILITY
-	if (oplus_adfr_is_support()) {
-		atomic_set(&phys_enc->frame_state, 0);
-		phys_enc->current_sync_threshold_start = 0;
-		phys_enc->qsync_sync_threshold_start = 0;
-	}
-#endif
 
 	SDE_DEBUG_CMDENC(cmd_enc, "created\n");
 
