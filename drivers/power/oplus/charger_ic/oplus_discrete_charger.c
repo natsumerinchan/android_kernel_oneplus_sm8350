@@ -525,11 +525,6 @@ static int oplus_chg_2uart_pinctrl_init(struct oplus_chg_chip *chip)
 		return -EINVAL;
 	}
 
-#ifdef CONFIG_OPLUS_FEATURE_CHG_MISC
-	if (!ext_boot_with_console())
-		pinctrl_select_state(chg->chg_2uart_pinctrl, chg->chg_2uart_sleep);
-#endif
-
 	return 0;
 }
 
