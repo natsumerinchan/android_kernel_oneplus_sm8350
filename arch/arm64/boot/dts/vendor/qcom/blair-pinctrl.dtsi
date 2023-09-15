@@ -1266,6 +1266,12 @@
 				function = "gpio";
 			};
 
+			config {
+				pins = "gpio58";
+				bias-pull-up;
+				output-high;
+				drive-strength = <2>;
+			};
 		};
 
 //#ifdef OPLUS_FEATURE_CHG_BASIC

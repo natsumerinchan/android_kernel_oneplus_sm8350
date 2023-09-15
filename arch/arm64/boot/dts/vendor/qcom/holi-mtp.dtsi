@@ -403,7 +403,7 @@
 };
 
 /*#ifndef OPLUS_FEATURE_CAMERA_COMMON*/
-//#include "camera/holi-camera-sensor-mtp.dtsi"
+#include "camera/holi-camera-sensor-mtp.dtsi"
 /*#endif OPLUS_FEATURE_CAMERA_COMMON*/
 
 &pm7250b_charger {

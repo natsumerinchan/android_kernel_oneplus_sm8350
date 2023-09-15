@@ -13,13 +13,23 @@
 #include "dsi-panel-nt36672e-fhd-plus-120-video.dtsi"
 #include "dsi-panel-nt36672e-fhd-plus-144-video.dtsi"
 #include "dsi-panel-nt36672e-fhd-plus-60hz-video.dtsi"
+#include "dsi-panel-oplus21221samsung-ams643ye01-1080-2400.dtsi"
+#include "dsi-panel-oplus20159-s643xy05-samsung-fhd-video.dtsi"
+#include "dsi-panel-oplus20159-s643xy05-samsung-fhd-video-ft3518.dtsi"
 #include <dt-bindings/clock/mdss-10nm-pll-clk.h>
 /* #ifdef */
 #include "dsi-panel-oplus21707-dsbj-ili7807s-fhd_plus-144fps-video.dtsi"
 #include "dsi-panel-oplus21707-jdi-td4377-fhd_plus-video.dtsi"
 /* #endif  */
 #include "dsi-panel-oplus22667-cost-ili7807s-fhd_plus-120fps-video.dtsi"
+#include "dsi-panel-oplus21291samsung-ams643ye01-1080-2400.dtsi"
+#include "dsi-panel-nt36523-boe-video.dtsi"
+#include "dsi-panel-nt36672c-tianma-fhd-video.dtsi"
 #include "dsi-panel-oplus22035-tm-ili7838a-1080-2412-dsc-cmd.dtsi"
+#include "dsi-panel-oplus22035-boe-nt37705-1080-2412-dsc-cmd.dtsi"
+#include "dsi-panel-oplus22821-nt36672c-tianma-fhd-video.dtsi"
+#include "dsi-panel-oplus22045-ili7807s-dsjdi-fhd-video.dtsi"
+#include "dsi-panel-oplus22035-visionox-ili7838a-1080-2412-dsc-cmd.dtsi"
 
 &soc {
 	dsi_panel_pwr_supply: dsi_panel_pwr_supply {
@@ -206,26 +216,6 @@
 
 	};
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 &dsi_sim_vid {
 	qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0";

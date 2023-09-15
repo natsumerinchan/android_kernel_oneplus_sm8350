@@ -184,15 +184,16 @@
 			bias-high-impedance;
 		};
 	};
-        key_vol_down {
-                key_vol_down_default: key_vol_down_default {
-                        pins = "gpio2";
-                        function = "normal";
-                        input-enable;
-                        bias-pull-up;
-                        power-source = <0>;
-                };
-        };
+
+	key_vol_down {
+		key_vol_down_default: key_vol_down_default {
+			pins = "gpio2";
+			function = "normal";
+			input-enable;
+			bias-pull-up;
+			power-source = <0>;
+		};
+	};
 };
 
 &pm6125_adc_tm {
