@@ -690,9 +690,6 @@ gen_headers_out_arm64 = [
     "scsi/scsi_bsg_ufs.h",
     "scsi/scsi_netlink.h",
     "scsi/scsi_netlink_fc.h",
-//#ifdef OPLUS_FEATURE_UFSPLUS
-    "scsi/ufs/ioctl.h",
-//#endif /* OPLUS_FEATURE_UFSPLUS */
     "sound/asequencer.h",
     "sound/asoc.h",
     "sound/asound.h",
@@ -944,6 +941,12 @@ gen_headers_out_arm64 = [
     "linux/netfilter/ipset/ip_set_list.h",
     "linux/wil6210_uapi.h",
 
+    "linux/eavb_shared.h",
+    "linux/netfilter_ipv4/ipt_TRIGGER.h",
+    "linux/esoc_ctrl.h",
+    "linux/netfilter_ipv4/ipt_NATTYPE.h",
+    "linux/mhi.h",
+
     // From arch/arm64/include/uapi/**/*.h
 
     "asm/auxvec.h",
@@ -986,6 +989,7 @@ gen_headers_out_arm64 = [
     "audio/linux/msm_audio_wma.h",
     "audio/linux/msm_audio_wmapro.h",
     "audio/linux/wcd-spi-ac-params.h",
+    "audio/linux/msm_audio_ar.h",
     "audio/sound/audio_effects.h",
     "audio/sound/audio_slimslave.h",
     "audio/sound/devdep_params.h",
@@ -1005,7 +1009,6 @@ gen_headers_out_arm64 = [
     "camera/media/cam_isp_ife.h",
     "camera/media/cam_isp_tfe.h",
     "camera/media/cam_isp_vfe.h",
-    "camera/media/cam_isp_sfe.h",
     "camera/media/cam_jpeg.h",
     "camera/media/cam_lrme.h",
     "camera/media/cam_ope.h",
@@ -1013,7 +1016,8 @@ gen_headers_out_arm64 = [
     "camera/media/cam_sensor.h",
     "camera/media/cam_sync.h",
     "camera/media/cam_tfe.h",
-//ifdef VENDOR_EDIT
+    "camera/media/cam_isp_sfe.h",
+//ifdef OPLUS_FEATURE_CAMERA_COMMON
     "camera/oplus/media/oplus_cam_sensor.h",
     "camera/oplus/media/oplus_cam_defs.h",
 //endif
@@ -1024,9 +1028,6 @@ gen_headers_out_arm64 = [
     "display/hdcp/msm_hdmi_hdcp_mgr.h",
     "vidc/media/msm_media_info.h",
     "vidc/media/msm_vidc_utils.h",
-//ifdef OPLUS_FEATURE_PXLW_IRIS5
-    "display/drm/msm_drm_iris.h",
-//endif
 ]
 
 genrule {
