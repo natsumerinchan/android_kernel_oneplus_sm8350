@@ -1195,7 +1195,7 @@ static int fts_enable_black_gesture(struct chip_data_ft3518 *ts_data,
 {
 	int i = 0;
 	int ret = 0;
-	int config1 = 0x50;
+	int config1 = 0xff;
 	int config2 = 0xff;
 	int config4 = 0xff;
 
@@ -1561,10 +1561,6 @@ static u32 fts_u32_trigger_reason(void *chip_data, int gesture_enable,
 		ret = touch_i2c_read_byte(ts_data->client, FTS_REG_GESTURE_EN);
 
 		if (ret == 0x01) {
-			if(ts_data->leave_gesture_buffer) {
-				ret = touch_i2c_read_block(ts_data->client, cmd, FTS_POINTS_ONE, &buf[0]);
-				TPD_INFO("touch_i2c_read_block FTS_POINTS_ONE add once");
-			}
 			ret = touch_i2c_read_byte(ts_data->client, FTS_REG_POINTS_LB);
 			return IRQ_GESTURE;
 		}
@@ -1705,27 +1701,13 @@ static int fts_get_touch_points(void *chip_data, struct point_info *points,
 		}
 
 		touch_point++;
-		if (!ts_data->high_resolution_support && !ts_data->high_resolution_support_x8) {
-		    points[pointid].x = ((buf[2 + base] & 0x0F) << 8) + (buf[3 + base] & 0xFF);
-		    points[pointid].y = ((buf[4 + base] & 0x0F) << 8) + (buf[5 + base] & 0xFF);
-		    points[pointid].touch_major = buf[7 + base];
-		    points[pointid].width_major = buf[7 + base];
-		    points[pointid].z =  buf[6 + base];
-		    event_flag = (buf[2 + base] >> 6);
-		} else if (ts_data->high_resolution_support_x8) {
-		    points[pointid].x = ((buf[2 + base] & 0x20) >> 5) +
-					((buf[2 + base] & 0x0F) << 11) +
-					((buf[3 + base] & 0xFF) << 3) +
-					((buf[6 + base] & 0xC0) >> 5);
-		    points[pointid].y = ((buf[2 + base] & 0x10) >> 4) +
-					((buf[4 + base] & 0x0F) << 11) +
-					((buf[5 + base] & 0xFF) << 3) +
-					((buf[6 + base] & 0x30) >> 3);
-		    points[pointid].touch_major = buf[7 + base];
-		    points[pointid].width_major = buf[7 + base];
-		    points[pointid].z =  buf[6 + base] & 0x0F;
-		    event_flag = (buf[2 + base] >> 6);
-
+		if (!ts_data->high_resolution_support) {
+			points[pointid].x = ((buf[2 + base] & 0x0F) << 8) + (buf[3 + base] & 0xFF);
+			points[pointid].y = ((buf[4 + base] & 0x0F) << 8) + (buf[5 + base] & 0xFF);
+			points[pointid].touch_major = buf[7 + base];
+			points[pointid].width_major = buf[7 + base];
+			points[pointid].z =  buf[6 + base];
+			event_flag = (buf[2 + base] >> 6);
 		} else {
 			points[pointid].x = ((buf[2 + base] & 0x0F) << 10) + ((buf[3 + base] & 0xFF) << 2)
 					+ ((buf[6 + base] & 0xC0) >> 6);
@@ -2135,12 +2117,8 @@ static int ft3518_parse_dts(struct chip_data_ft3518 *ts_data, struct i2c_client 
 	np = dev->of_node;
 
 	ts_data->high_resolution_support = of_property_read_bool(np, "high_resolution_support");
-	ts_data->high_resolution_support_x8 = of_property_read_bool(np, "high_resolution_support_x8");
-	TPD_INFO("%s:high_resolution_support is:%d %d\n", __func__, ts_data->high_resolution_support, ts_data->high_resolution_support_x8);
-	ts_data->leave_gesture_buffer = of_property_read_bool(np, "leave_gesture_buffer");
-	TPD_INFO("%s:leave_gesture_buffer\n", __func__);
-	ts_data->read_buffer_support = of_property_read_bool(np, "read_buffer_support");
-	TPD_INFO("%s:read_buffer_support is:%d\n", __func__, ts_data->read_buffer_support);
+	TPD_INFO("%s:high_resolution_support is:%d\n", __func__, ts_data->high_resolution_support);
+
 	return 0;
 }
 

@@ -27,4 +27,5 @@ extern int preconfig_power_control(struct touchpanel_data *ts);
 extern int reconfig_power_control(struct touchpanel_data *ts);
 
 extern void display_esd_check_enable_bytouchpanel(bool enable);
+
 #endif

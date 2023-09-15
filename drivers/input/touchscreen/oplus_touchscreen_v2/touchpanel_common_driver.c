@@ -75,13 +75,6 @@ static DEFINE_MUTEX(tp_core_lock);
 int cur_tp_index = 0;
 int chip_index = 0;
 EXPORT_SYMBOL(cur_tp_index);
-
-static int sigle_num = 0;
-u64 tpstart, tpend;
-static int pointx[2] = {0, 0};
-static int pointy[2] = {0, 0};
-
-#define ABS(a, b) ((a - b > 0) ? a - b : b - a)
 /*******Part2:declear Area********************************/
 static void speedup_resume(struct work_struct *work);
 static void lcd_trigger_load_tp_fw(struct work_struct *work);
@@ -115,6 +108,9 @@ extern  int reconfig_power_control(struct touchpanel_data *ts);
 #if IS_ENABLED(CONFIG_TOUCHPANEL_NOTIFY)
 static int tp_gesture_enable_flag(unsigned int tp_index);
 extern int (*tp_gesture_enable_notifier)(unsigned int tp_index);
+extern int (*tp_cs_gpio_notifier)(bool enable, unsigned int tp_index);
+extern int (*tp_reset_gpio_notifier)(bool enable, unsigned int tp_index);
+extern void (*tp_ftm_extra_notifier)(unsigned int tp_index);
 #endif
 
 #ifdef CONFIG_TOUCHPANEL_MTK_PLATFORM
@@ -210,9 +206,6 @@ void operate_mode_switch(struct touchpanel_data *ts)
 		if (ts->fw_edge_limit_support) {
 			ts->ts_ops->mode_switch(ts->chip_data, MODE_EDGE, ts->limit_enable);
 		}
-
-		if (ts->game_switch_support)
-			ts->ts_ops->mode_switch(ts->chip_data, MODE_GAME, ts->noise_level);
 
 		if (ts->charger_pump_support) {
 			ts->ts_ops->mode_switch(ts->chip_data, MODE_CHARGE, ts->is_usb_checked);
@@ -461,36 +454,6 @@ static void tp_geture_info_transform(struct gesture_info *gesture,
 				 resolution_info->LCD_HEIGHT / (resolution_info->max_y);
 }
 
-int sec_double_tap(struct gesture_info *gesture)
-{
-    uint32_t timeuse = 0;
-
-    if (sigle_num == 0) {
-        tpstart = ktime_get_real_ns();
-        pointx[0] = gesture->Point_start.x;
-        pointy[0] = gesture->Point_start.y;
-        sigle_num++;
-        TPD_DEBUG("first enter double tap\n");
-    } else if (sigle_num == 1) {
-        tpend = ktime_get_real_ns();
-        pointx[1] = gesture->Point_start.x;
-        pointy[1] = gesture->Point_start.y;
-        sigle_num = 0;
-        timeuse = tpend - tpstart;
-        TPD_DEBUG("timeuse = %d, distance[x] = %d, distance[y] = %d\n", timeuse, ABS(pointx[0], pointx[1]), ABS(pointy[0], pointy[1]));
-        if ((ABS(pointx[0], pointx[1]) < 150) && (ABS(pointy[0], pointy[1]) < 200) && (timeuse < 500000000)) {
-            return 1;
-        } else {
-            TPD_DEBUG("not match double tap\n");
-            tpstart = ktime_get_real_ns();
-            pointx[0] = gesture->Point_start.x;
-            pointy[0] = gesture->Point_start.y;
-            sigle_num = 1;
-        }
-    }
-    return 0;
-}
-
 static void tp_gesture_handle(struct touchpanel_data *ts)
 {
 	struct gesture_info gesture_info_temp;
@@ -508,15 +471,6 @@ static void tp_gesture_handle(struct touchpanel_data *ts)
 		ts->ts_ops->get_gesture_info_auto(ts->chip_data, &gesture_info_temp, &ts->resolution_info);
 	}
 	tp_geture_info_transform(&gesture_info_temp, &ts->resolution_info);
-
-	if (ts->panel_data.manufacture_info.manufacture
-		&& !strncmp(ts->panel_data.manufacture_info.manufacture, "SEC_", 4)) {
-		if (gesture_info_temp.gesture_type == SINGLE_TAP) {
-			if (sec_double_tap(&gesture_info_temp) == 1) {
-				gesture_info_temp.gesture_type = DOU_TAP;
-			}
-		}
-	}
 
 	TP_INFO(ts->tp_index, "detect %s gesture\n",
 		gesture_info_temp.gesture_type == DOU_TAP ? "double tap" :
@@ -566,9 +520,9 @@ static void tp_gesture_handle(struct touchpanel_data *ts)
 		input_sync(ts->input_dev);
 
 	} else if (gesture_info_temp.gesture_type != UNKOWN_GESTURE
-		&& gesture_info_temp.gesture_type != FINGER_PRINTDOWN
-		&& gesture_info_temp.gesture_type != FRINGER_PRINTUP
-		&& CHK_BIT(ts->gesture_enable_indep, (1 << gesture_info_temp.gesture_type))) {
+	    && gesture_info_temp.gesture_type != FINGER_PRINTDOWN
+	    && gesture_info_temp.gesture_type != FRINGER_PRINTUP
+	    && CHK_BIT(ts->gesture_enable_indep, (1 << gesture_info_temp.gesture_type))) {
 		tp_memcpy(&ts->gesture, sizeof(ts->gesture), \
 			  &gesture_info_temp, sizeof(struct gesture_info), \
 			  sizeof(struct gesture_info));
@@ -3089,6 +3043,9 @@ int register_common_touch_device(struct touchpanel_data *pdata)
 
 	/*step10 : FTM process*/
 	ts->boot_mode = get_boot_mode();
+	tp_cs_gpio_notifier = tp_control_cs_gpio;
+	tp_reset_gpio_notifier = tp_control_reset_gpio;
+	tp_ftm_extra_notifier = tp_ftm_extra;
 
 	if (is_ftm_boot_mode(ts)) {
 		ts->ts_ops->ftm_process(ts->chip_data);

@@ -39,6 +39,9 @@ static int sec_power_control(void *chip_data, bool enable);
 static int sec_get_verify_result(struct chip_data_s6sy792 *chip_info);
 static int sec_read_mutual(struct chip_data_s6sy792 *chip_info, u8 type, char *data, int len);
 static bool check_calibration(struct chip_data_s6sy792 *chip_info);
+static int sec_set_large_corner_frame_limit(void *chip_data, int frame_limit);
+static int sec_set_condition_frame_limit(void *chip_data, int frame_limit);
+static int sec_set_large_frame_limit(void *chip_data, int frame_limit);
 
 /****** Start of other functions that work for oplus_touchpanel_operations callbacks***********/
 static int sec_enable_black_gesture(struct chip_data_s6sy792 *chip_info, int enable)
@@ -165,6 +168,7 @@ static int sec_enable_edge_limit(struct chip_data_s6sy792 *chip_info, int enable
 {
 	int ret = -1;
 	unsigned char buf[5] = {0};
+	unsigned char cmd[3] = {0};
 	unsigned char extra_cmd[3] = {0};
 
 	TPD_INFO("limit_switch is %d\n", enable);
