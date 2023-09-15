@@ -19,9 +19,9 @@
 
 #ifdef OPLUS_ARCH_EXTENDS
 #if IS_ENABLED(CONFIG_TCPC_CLASS)
-#include "../../usb/typec/tcpc/inc/tcpci.h"
-#include "../../usb/typec/tcpc/inc/tcpm.h"
-#include "../../usb/typec/tcpc/inc/tcpci_typec.h"
+#include <tcpci.h>
+#include <tcpm.h>
+#include <tcpci_typec.h>
 #endif
 #endif /* OPLUS_ARCH_EXTENDS */
 

@@ -18,6 +18,7 @@
 #include <linux/mm.h>
 #include <linux/of.h>
 #include <linux/uaccess.h>
+#include "../../../drivers/input/oplus_secure_drivers/include/oplus_secure_common.h"
 
 #define RPM_MASTERS_BUF_LEN 400
 
@@ -494,6 +495,10 @@ static  int msm_rpm_master_stats_probe(struct platform_device *pdev)
 	struct dentry *dent;
 	struct msm_rpm_master_stats_platform_data *pdata;
 	struct resource *res = NULL;
+	#if defined(OPLUS_FEATURE_POWERINFO_RPMH) && defined(CONFIG_OPLUS_POWERINFO_RPMH)
+	struct kobject *rpmh_master_stats_kobj = NULL;
+	int ret = -ENOMEM;
+	#endif
 
 	pdata = msm_rpm_master_populate_pdata(&pdev->dev);
 	if (!pdata)
@@ -519,17 +524,51 @@ static  int msm_rpm_master_stats_probe(struct platform_device *pdev)
 								__func__);
 		return -ENOMEM;
 	}
+	#if defined(OPLUS_FEATURE_POWERINFO_RPMH) && defined(CONFIG_OPLUS_POWERINFO_RPMH)
+	pdata->dent = dent;
+	rpmh_master_stats_kobj = kobject_create_and_add(
+				"rpmh_stats",
+				power_kobj);
+	if (!rpmh_master_stats_kobj)
+		return ret;
+	pdata->kobj = rpmh_master_stats_kobj;
+	sysfs_attr_init(&pdata->oplus_ka.attr);
+	pdata->oplus_ka.attr.mode = 0444;
+	pdata->oplus_ka.attr.name = "oplus_rpmh_master_stats";
+	pdata->oplus_ka.show = oplus_msm_rpmh_master_stats_show;
+	pdata->oplus_ka.store = NULL;
 
+	ret = sysfs_create_file(pdata->kobj, &pdata->oplus_ka.attr);
+	if (ret) {
+		pr_err("sysfs_create_file failed\n");
+		return ret;
+	}
+	platform_set_drvdata(pdev, pdata);
+	g_pdata = pdata;
+	#else
 	platform_set_drvdata(pdev, dent);
+	#endif
+
 	return 0;
 }
 
 static int msm_rpm_master_stats_remove(struct platform_device *pdev)
 {
+	#if defined(OPLUS_FEATURE_POWERINFO_RPMH) && defined(CONFIG_OPLUS_POWERINFO_RPMH)
+	struct msm_rpm_master_stats_platform_data *pdata;
+
+	pdata = platform_get_drvdata(pdev);
+	debugfs_remove(pdata->dent);
+	if( g_pdata != NULL){
+		sysfs_remove_file(pdata->kobj, &pdata->oplus_ka.attr);
+		kobject_put(pdata->kobj);
+	}
+	#else
 	struct dentry *dent;
 
 	dent = platform_get_drvdata(pdev);
 	debugfs_remove(dent);
+	#endif
 	platform_set_drvdata(pdev, NULL);
 	return 0;
 }

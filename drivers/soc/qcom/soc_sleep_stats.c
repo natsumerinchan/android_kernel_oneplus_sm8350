@@ -39,6 +39,9 @@ struct soc_sleep_stats_data {
 	const struct stats_config *config;
 	struct kobject *kobj;
 	struct kobj_attribute ka;
+	#if defined(OPLUS_FEATURE_POWERINFO_RPMH) && defined(CONFIG_OPLUS_POWERINFO_RPMH)
+	struct kobj_attribute ka_oplus;
+	#endif
 	void __iomem *reg;
 };
 
@@ -66,6 +69,15 @@ static inline u64 get_time_in_sec(u64 counter)
 
 	return counter;
 }
+
+#if defined(OPLUS_FEATURE_POWERINFO_RPMH) && defined(CONFIG_OPLUS_POWERINFO_RPMH)
+static inline u64 get_time_in_msec(u64 counter)
+{
+	do_div(counter, arch_timer_get_rate()/1000);
+
+	return counter;
+}
+#endif
 
 static inline ssize_t append_data_to_buf(char *buf, int length,
 					 struct stats_entry *data)
@@ -144,6 +156,7 @@ exit:
 	return length;
 }
 
+#if !defined(OPLUS_FEATURE_POWERINFO_RPMH) || !defined(CONFIG_OPLUS_POWERINFO_RPMH)
 static int soc_sleep_stats_create_sysfs(struct platform_device *pdev,
 					struct soc_sleep_stats_data *drv)
 {
@@ -158,6 +171,30 @@ static int soc_sleep_stats_create_sysfs(struct platform_device *pdev,
 
 	return sysfs_create_file(drv->kobj, &drv->ka.attr);
 }
+#else
+static int soc_sleep_stats_create_sysfs(struct platform_device *pdev,
+					struct soc_sleep_stats_data *drv)
+{
+	int ret = 0;
+	drv->kobj = kobject_create_and_add("soc_sleep", power_kobj);
+	if (!drv->kobj)
+		return -ENOMEM;
+
+	sysfs_attr_init(&drv->ka.attr);
+	drv->ka.attr.mode = 0444;
+	drv->ka.attr.name = "stats";
+	drv->ka.show = stats_show;
+
+	sysfs_attr_init(&drv->ka_oplus.attr);
+	drv->ka_oplus.attr.mode = 0444;
+	drv->ka_oplus.attr.name = "oplus_rpmh_stats";
+	drv->ka_oplus.show = oplus_rpmh_stats_show;
+
+	ret = sysfs_create_file(drv->kobj, &drv->ka.attr);
+	ret |= sysfs_create_file(drv->kobj, &drv->ka_oplus.attr);
+	return ret;
+}
+#endif
 
 static const struct stats_config legacy_rpm_data = {
 	.num_records = 2,
@@ -237,6 +274,9 @@ static int soc_sleep_stats_remove(struct platform_device *pdev)
 	struct soc_sleep_stats_data *drv = platform_get_drvdata(pdev);
 
 	sysfs_remove_file(drv->kobj, &drv->ka.attr);
+	#if defined(OPLUS_FEATURE_POWERINFO_RPMH) && defined(CONFIG_OPLUS_POWERINFO_RPMH)
+	sysfs_remove_file(drv->kobj, &drv->ka_oplus.attr);
+	#endif
 	kobject_put(drv->kobj);
 
 	return 0;
