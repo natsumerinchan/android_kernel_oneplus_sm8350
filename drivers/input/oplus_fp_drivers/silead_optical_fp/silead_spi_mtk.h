@@ -1,27 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * @file   silead_fp.h
- * @brief  Contains silead_fp device head file.
- *
- *
- * Copyright 2016-2018 Slead Inc.
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
- *
- * ------------------- Revision History ------------------------------
- * <author>    <date>   <version>     <desc>
- * Bill Yu    2018/5/2    0.1.0      Init version
- * Bill Yu    2018/5/28   0.1.1      Disable netlink if netlink id = 0
- * Bill Yu    2018/6/1    0.1.2      Support wakelock
- * Bill Yu    2018/6/5    0.1.3      Support chip enter power down
- * Bill Yu    2018/6/7    0.1.4      Support create proc node
- * Bill Yu    2018/6/27   0.1.5      Expand pwdn I/F
- * Bangxiong.Wu 2019/03/22 1.0.0     change AVDD from 3V to 3.3V
- *
+ * Copyright (C) 2018-2020 Oplus. All rights reserved.
  */
 
 #ifndef __SILEAD_FP_H__

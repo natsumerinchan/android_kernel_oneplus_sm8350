@@ -1,28 +1,7 @@
-/************************************************************************************
-** File: - drivers\input\fpc_tee\fpc_irq.c
-** OPLUS_FEATURE_FINGERPRINT
-** Copyright (C), 2008-2016, OPLUS Mobile Comm Corp., Ltd
-**
-** Description:
-**      fpc fingerprint kernel device driver
-**
-** Version: 1.0
-** Date created: 15:03:11,22/11/2017
-** TAG: BSP.Fingerprint.Basic
-**
-** --------------------------- Revision History: --------------------------------
-**    <author>     <data>        <desc>
-**    LiBin        2017/11/22    create the file
-**    LiBin        2018/01/05    Modify for reset sequence
-**    Ran.Chen     2018/06/26    add for 1023_2060_GLASS
-**    Long.Liu     2018/09/29    add for 18531 fpc1023
-**    Long.Liu     2018/11/19    modify 18531 static test
-**    Long.Liu     2018/11/23    add for 18151 fpc1023
-**    Yang.Tan     2018/11/26    add for 18531 fpc1511
-**    Long.Liu     2019/01/03    add for 18161 fpc1511
-**    Long.Liu     2019/05/05    modify for spi device
-**    Long.Liu     2019/06/07    modify for FPC abnamol module current
-************************************************************************************/
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (C) 2018-2020 Oplus. All rights reserved.
+ */
 
 #include <linux/version.h>
 #include <linux/clk.h>
@@ -44,7 +23,7 @@
 #include <linux/pm_wakeup.h>
 #include <linux/spi/spi.h>
 #include "../include/oplus_fp_common.h"
-#include <soc/oplus/oplus_project.h>
+#include <soc/oplus/system/oplus_project.h>
 
 #define FPC_IRQ_DEV_NAME    "fpc_irq"
 
@@ -69,8 +48,10 @@
 #define   WAKELOCK_ENABLE                                   1
 #define   WAKELOCK_TIMEOUT_ENABLE                           2
 #define   WAKELOCK_TIMEOUT_DISABLE                          3
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 14, 0)
 struct mtk_spi {
-        void __iomem                                        *base;
+    void __iomem                                        *base;
         void __iomem                                        *peri_regs;
         u32                                                 state;
         int                                                 pad_num;
@@ -83,10 +64,39 @@ struct mtk_spi {
         const struct mtk_spi_compatible                     *dev_comp;
         u32                                                 dram_8gb_offset;
 };
+#elif (LINUX_VERSION_CODE == KERNEL_VERSION(4, 14, 0))
+struct mtk_spi {
+    void __iomem *base;
+    u32 state;
+    int pad_num;
+    u32 *pad_sel;
+    struct clk *parent_clk, *sel_clk, *spi_clk;
+    struct spi_transfer *cur_transfer;
+    u32 xfer_len;
+    u32 num_xfered;
+    struct scatterlist *tx_sgl, *rx_sgl;
+    u32 tx_sgl_len, rx_sgl_len;
+    const struct mtk_spi_compatible *dev_comp;
+};
+#else
+struct mtk_spi {
+    void __iomem *base;
+    u32 state;
+    int pad_num;
+    u32 *pad_sel;
+    struct clk *parent_clk, *sel_clk, *spi_clk, *spare_clk;
+    struct spi_transfer *cur_transfer;
+    u32 xfer_len;
+    u32 num_xfered;
+    struct scatterlist *tx_sgl, *rx_sgl;
+    u32 tx_sgl_len, rx_sgl_len;
+    const struct mtk_spi_compatible *dev_comp;
+};
+#endif
 
 struct clk *globle_spi_clk;
 struct mtk_spi *fpc_ms;
-int g_cs_timing_enable;
+int g_use_gpio_power_enable;
 
 typedef struct {
         struct spi_device                                   *spi;
@@ -245,8 +255,8 @@ int fpc_power_on(struct fpc1020_data* fpc_dev)
             pr_info("---- power on ldo ----\n");
             break;
         case FP_POWER_MODE_GPIO:
-            gpio_set_value(fpc_dev->pwr_list[index].pwr_gpio, 1);
-            pr_info("set pwr_gpio 1\n");
+            gpio_set_value(fpc_dev->pwr_list[index].pwr_gpio, fpc_dev->pwr_list[index].poweron_level);
+            pr_info("set pwr_gpio %d\n", fpc_dev->pwr_list[index].poweron_level);
             break;
         case FP_POWER_MODE_AUTO:
             pr_info("[%s] power on auto, no need power on again\n", __func__);
@@ -285,8 +295,8 @@ int fpc_power_off(struct fpc1020_data* fpc_dev)
             pr_info("---- power on ldo ----\n");
             break;
         case FP_POWER_MODE_GPIO:
-            gpio_set_value(fpc_dev->pwr_list[index].pwr_gpio, 0);
-            pr_info("set pwr_gpio 1\n");
+            gpio_set_value(fpc_dev->pwr_list[index].pwr_gpio, (fpc_dev->pwr_list[index].poweron_level == 0 ? 1: 0));
+            pr_info("set pwr_gpio %d\n", (fpc_dev->pwr_list[index].poweron_level == 0 ? 1: 0));
             break;
         case FP_POWER_MODE_AUTO:
             pr_info("[%s] power on auto, no need power on again\n", __func__);
@@ -505,7 +515,7 @@ static ssize_t wakelock_enable_set(struct device *dev,
 
 static ssize_t hardware_reset(struct device *dev, struct device_attribute *attribute, const char *buffer, size_t count)
 {
-        if (g_cs_timing_enable == 1) {
+        if (g_use_gpio_power_enable == 1) {
                 struct  fpc1020_data *fpc1020 = dev_get_drvdata(dev);
                 printk("fpc_interrupt: %s enter\n", __func__);
                 gpio_direction_output(fpc1020->vdd_en_gpio, 0);
@@ -669,18 +679,31 @@ int fpc_parse_pwr_list(struct fpc1020_data* fpc_dev) {
             pwr_list[child_node_index].pwr_gpio = of_get_named_gpio(np, node_name, 0);
             pr_debug("end of_get_named_gpio %s, pwr_gpio: %d!\n", node_name, pwr_list[child_node_index].pwr_gpio);
             if (pwr_list[child_node_index].pwr_gpio < 0) {
-                pr_err("falied to get goodix_pwr gpio!\n");
+                pr_err("falied to get fpc_pwr gpio!\n");
                 ret = -FP_ERROR_GENERAL;
                 goto exit;
             }
+
+            /* get poweron-level of gpio */
+            pr_info("get poweron level: %s", FP_POWERON_LEVEL_NODE);
+            ret = of_property_read_u32(child, FP_POWERON_LEVEL_NODE, &pwr_list[child_node_index].poweron_level);
+            if (ret) {
+                /* property of poweron-level is not config, by default set to 1 */
+                pwr_list[child_node_index].poweron_level = 1;
+            } else {
+                if (pwr_list[child_node_index].poweron_level != 0) {
+                    pwr_list[child_node_index].poweron_level = 1;
+                }
+            }
+            pr_info("gpio poweron level: %d\n", pwr_list[child_node_index].poweron_level);
 
             ret = devm_gpio_request(dev, pwr_list[child_node_index].pwr_gpio, node_name);
             if (ret) {
                 pr_err("failed to request %s gpio, ret = %d\n", node_name, ret);
                 goto exit;
             }
-            gpio_direction_output(pwr_list[child_node_index].pwr_gpio, 0);
-            pr_err("set goodix_pwr %u output 0 \n", child_node_index);
+            gpio_direction_output(pwr_list[child_node_index].pwr_gpio, (pwr_list[child_node_index].poweron_level == 0 ? 1: 0));
+            pr_err("set fpc_pwr %u output %d \n", child_node_index, pwr_list[child_node_index].poweron_level);
             break;
 
         case FP_POWER_MODE_AUTO:
@@ -723,7 +746,7 @@ static int fpc1020_irq_probe(struct platform_device *pldev)
                 rc = -ENOMEM;
                 goto ERR_ALLOC;
         }
-        g_cs_timing_enable = 0;
+        g_use_gpio_power_enable = 0;
         fpc1020->cs_gpio_set = false;
         fpc1020->pinctrl = NULL;
         fpc1020->pstate_cs_func = NULL;
@@ -752,14 +775,13 @@ static int fpc1020_irq_probe(struct platform_device *pldev)
         }
         dev_info(dev, "found fpc sensor\n");
 
-        rc = of_property_read_u32(np, "fpc,cs_timing_enable", &g_cs_timing_enable);
+        rc = of_property_read_u32(np, "fpc,use_gpio_power_enable", &g_use_gpio_power_enable);
         if (rc) {
-                dev_err(dev, "failed to request fpc,cs_enable, ret = %d\n", rc);
-                rc = -EINVAL;
-                goto ERR_BEFORE_WAKELOCK;
+            dev_err(dev, "failed to request fpc,use_gpio_power_enable, ret = %d\n", rc);
+            g_use_gpio_power_enable = 0;
         }
 
-        if (g_cs_timing_enable == 1) {
+        if (g_use_gpio_power_enable == 1) {
             fpc1020->pinctrl = devm_pinctrl_get(&pldev->dev);
             if (IS_ERR(fpc1020->pinctrl)) {
                 dev_err(&pldev->dev, "can not get the fpc pinctrl");
@@ -820,11 +842,11 @@ static int fpc1020_irq_probe(struct platform_device *pldev)
                 goto ERR_AFTER_WAKELOCK;
         }
 
-        if (g_cs_timing_enable == 1) {
+        if (g_use_gpio_power_enable == 1) {
         /*get cs resource*/
                 fpc1020->cs_gpio = of_get_named_gpio(pldev->dev.of_node, "fpc,gpio_cs", 0);
                 if (!gpio_is_valid(fpc1020->cs_gpio)) {
-                        pr_info("CS GPIO is invalid.\n");
+                        dev_err(fpc1020->dev, "CS GPIO is invalid.\n");
                         return -1;
                 }
                 rc = gpio_request(fpc1020->cs_gpio, "fpc,gpio_cs");
@@ -836,7 +858,7 @@ static int fpc1020_irq_probe(struct platform_device *pldev)
                 fpc1020->cs_gpio_set = true;
 
                 if (fpc1020->cs_gpio_set) {
-                        pr_info("---- pull CS up and set CS from gpio to func ----");
+                        dev_info(fpc1020->dev, "---- pull CS up and set CS from gpio to func ----");
                         gpio_set_value(fpc1020->cs_gpio, 1);
                         pinctrl_select_state(fpc1020->pinctrl, fpc1020->pstate_cs_func);
                         fpc1020->cs_gpio_set = false;
@@ -856,9 +878,9 @@ static int fpc1020_irq_probe(struct platform_device *pldev)
             goto ERR_AFTER_WAKELOCK;
         }
 
-        if (g_cs_timing_enable != 1) {
+        //if (g_use_gpio_power_enable != 1) {
            fpc_power_on(fpc1020);
-        }
+        //}
 
         mdelay(2);
         gpio_set_value(fpc1020->rst_gpio, 1);

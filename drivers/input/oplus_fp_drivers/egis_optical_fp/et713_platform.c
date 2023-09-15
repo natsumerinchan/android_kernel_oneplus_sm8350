@@ -1,23 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * Simple synchronous userspace interface to PD devices
- *
- * Copyright (C) 2006 SWAPP
- *	Andrea Paterniani <a.paterniani@swapp-eng.it>
- * Copyright (C) 2007 David Brownell (simplification, cleanup)
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License Version 2
- * as published by the Free Software Foundation.
- */
-
-/*
- *
- *  et713_platform.c
- *  Date: 2016/03/16
- *  Version: 0.9.0.1
- *  Revise Date:  2017/4/17
- *  Copyright (C) 2007-2016 Egis Technology Inc.
- *
+ * Copyright (C) 2018-2020 Oplus. All rights reserved.
  */
 
 #include <linux/interrupt.h>

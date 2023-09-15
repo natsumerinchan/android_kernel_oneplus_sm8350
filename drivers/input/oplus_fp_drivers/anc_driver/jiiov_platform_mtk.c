@@ -170,8 +170,8 @@ void spi_clk_enable(u8 bonoff)
             pr_info("[anc] disable spi clk\n");
             mt_spi_disable_master_clk(g_mtk_spi_device);
             is_spi_clk_open = 0;
-        }  else {
-            pr_info("[anc] spi clk already disable \n");
+        } else {
+            pr_info("[anc] spi clk alrady disable");
         }
     }
 }

@@ -1,21 +1,7 @@
-/************************************************************************************
-** File: - fingerprints_hal\drivers\egis_fp\et713_mtk.c
-** VENDOR_EDIT
-** Copyright (C), 2009-2019, OPLUS Mobile Comm Corp., Ltd
-**
-** Description:
-**      egis fingerprint kernel device driver
-**
-** Version: 1.0
-** Date created: 18:50:12,20/12/2019
-** TAG: BSP.Fingerprint.Basic
-**
-** --------------------------- Revision History: --------------------------------
-**    <author>     <data>        <desc>
-**    Qijia.Zhou  2019/12/20    create the file for egis et713
-**    Qijia.Zhou  2019/12/28    add for FP_CLEAN_TOUCH_FLAG
-************************************************************************************/
-
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (C) 2018-2020 Oplus. All rights reserved.
+ */
 
 #include <linux/interrupt.h>
 #ifdef CONFIG_OF

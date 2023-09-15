@@ -9,6 +9,45 @@
 #include <linux/printk.h>
 #include "../include/wakelock.h"
 
+/*#if 0
+#ifndef _LINUX_WAKELOCK_H
+enum {
+    WAKE_LOCK_SUSPEND, 
+    WAKE_LOCK_TYPE_COUNT
+};
+
+struct wake_lock {
+    struct wakeup_source ws;
+};
+
+static inline void wake_lock_init(struct wake_lock *lock, int type,
+                                  const char *name)
+{
+    wakeup_source_init(&lock->ws, name);
+}
+
+static inline void wake_lock_destroy(struct wake_lock *lock)
+{
+    wakeup_source_trash(&lock->ws);
+}
+
+static inline void wake_lock(struct wake_lock *lock)
+{
+    __pm_stay_awake(&lock->ws);
+}
+
+static inline void wake_lock_timeout(struct wake_lock *lock, long timeout)
+{
+    __pm_wakeup_event(&lock->ws, jiffies_to_msecs(timeout));
+}
+
+static inline void wake_unlock(struct wake_lock *lock)
+{
+    __pm_relax(&lock->ws);
+}
+#endif 
+#endif */
+
 enum _pwdn_mode_t {
 	SIFP_PWDN_NONE = 0,
 	SIFP_PWDN_POWEROFF = 1, /* shutdown the avdd power supply */
@@ -89,7 +128,7 @@ struct fp_dev_touch_info {
 
 #define PROC_VND_ID_LEN   32
 
-#define SIFP_IOC_MAGIC    's'
+#define SIFP_IOC_MAGIC	's'
 
 #define SIFP_IOC_RESET        _IOW(SIFP_IOC_MAGIC, 10, u8)
 
@@ -97,7 +136,7 @@ struct fp_dev_touch_info {
 #define SIFP_IOC_DISABLE_IRQ  _IO(SIFP_IOC_MAGIC,  12)
 #define SIFP_IOC_WAIT_IRQ     _IOR(SIFP_IOC_MAGIC, 13, u8)
 #define SIFP_IOC_CLR_IRQ      _IO(SIFP_IOC_MAGIC,  14)
-//#define SPFP_IOC_EXIT       _IOR(SIFP_IOC_MAGIC, 1, u8)
+/*#define SPFP_IOC_EXIT       _IOR(SIFP_IOC_MAGIC, 1, u8)*/
 
 #define SIFP_IOC_KEY_EVENT    _IOW(SIFP_IOC_MAGIC, 15, struct fp_dev_key_t)
 #define SIFP_IOC_INIT         _IOR(SIFP_IOC_MAGIC, 16, struct fp_dev_init_t)
@@ -110,39 +149,40 @@ struct fp_dev_touch_info {
 #define SIFP_IOC_ACQ_SPI      _IO(SIFP_IOC_MAGIC,  23)
 #define SIFP_IOC_RLS_SPI      _IO(SIFP_IOC_MAGIC,  24)
 #define SIFP_IOC_PKG_SIZE     _IOR(SIFP_IOC_MAGIC, 25, u8)
-#define SIFP_IOC_DBG_LEVEL    _IOWR(SIFP_IOC_MAGIC,26, u8)
+#define SIFP_IOC_DBG_LEVEL    _IOWR(SIFP_IOC_MAGIC, 26, u8)
 #define SIFP_IOC_WAKELOCK     _IOW(SIFP_IOC_MAGIC, 27, u8)
 #define SIFP_IOC_PWDN         _IOW(SIFP_IOC_MAGIC, 28, u8)
 #define SIFP_IOC_PROC_NODE    _IOW(SIFP_IOC_MAGIC, 29, char[PROC_VND_ID_LEN])
 #define SIFP_IOC_SET_FEATURE  _IOW(SIFP_IOC_MAGIC, 30, u8)
-#define SIFP_IOC_GET_TP_TOUCH_INFO          _IOR(SIFP_IOC_MAGIC, 31, struct fp_dev_touch_info)//add heng
+#define SIFP_IOC_GET_TP_TOUCH_INFO          _IOR(SIFP_IOC_MAGIC, 31, struct fp_dev_touch_info)/*add heng*/
 
 #define FEATURE_FLASH_CS      0x01
 
-#define RESET_TIME            2    /* Default chip reset wait time(ms) */
+#define RESET_TIME            2	/* Default chip reset wait time(ms) */
 #define RESET_TIME_MULTIPLE   1 /* Multiple for reset time multiple*wait_time */
 #define SIFP_NETLINK_ROUTE    30
 #define NL_MSG_LEN            16
 
-//#define PROC_DIR        "fp"      /* if defined, create node under /proc/fp/xxx */
+/*#define PROC_DIR		"fp"       if defined, create node under /proc/fp/xxx 
 
-//#ifdef ODM_HQ_EDIT
-//no create /proc/fp_id
-//#define PROC_NODE        "fp_id"   /* proc node name */
-//#endif
+#ifdef ODM_HQ_EDIT
+lishuyan@ODM_HQ.BSP.FINGEPRINT 2020/06/04
+no create /proc/fp_id
+#define PROC_NODE		"fp_id"    proc node name 
+#endif */
 
 #if (SIFP_NETLINK_ROUTE > 0)
-    #define BSP_SIL_NETLINK
+	#define BSP_SIL_NETLINK
 #endif
 
 #if !defined(BSP_SIL_PLAT_MTK) && !defined(BSP_SIL_PLAT_QCOM)
-  #define BSP_SIL_PLAT_COMM
+	#define BSP_SIL_PLAT_COMM
 #endif /* ! BSP_SIL_PLAT_MTK & ! BSP_SIL_PLAT_QCOM */
 
 /* Todo: enable correct power supply mode */
 #define BSP_SIL_POWER_SUPPLY_REGULATOR
-//#define BSP_SIL_POWER_SUPPLY_PINCTRL
-//#define BSP_SIL_POWER_SUPPLY_GPIO
+/*#define BSP_SIL_POWER_SUPPLY_PINCTRL
+#define BSP_SIL_POWER_SUPPLY_GPIO*/
 
 /* AVDD voltage range 2.8v ~ 3.3v */
 #define AVDD_MAX  3000000
@@ -152,66 +192,64 @@ struct fp_dev_touch_info {
 #define VDDIO_MAX 1800000
 #define VDDIO_MIN 1800000
 
-#if defined(BSP_SIL_POWER_SUPPLY_REGULATOR) && defined(BSP_SIL_POWER_SUPPLY_PINCTRL) || defined(BSP_SIL_POWER_SUPPLY_REGULATOR) && defined(BSP_SIL_POWER_SUPPLY_GPIO) || defined(BSP_SIL_POWER_SUPPLY_GPIO) && defined(BSP_SIL_POWER_SUPPLY_PINCTRL)
-  #error "Don't define multiple power supply mode!"
+#if defined(BSP_SIL_POWER_SUPPLY_REGULATOR) && defined(BSP_SIL_POWER_SUPPLY_PINCTRL) || defined(BSP_SIL_POWER_SUPPLY_REGULATOR)\
+			&& defined(BSP_SIL_POWER_SUPPLY_GPIO) || defined(BSP_SIL_POWER_SUPPLY_GPIO) && defined(BSP_SIL_POWER_SUPPLY_PINCTRL)
+	#error "Don't define multiple power supply mode!"
 #endif
 
 #ifdef BSP_SIL_PLAT_MTK
-  #include "silead_fp_mtk.h"
-  #define PLAT_H "silead_fp_mtk.c"
+	#include "silead_fp_mtk.h"
+	#define PLAT_H "silead_fp_mtk.c"
 
-  #define DEVICE "/dev/spidev1.0"
-  //#define BSP_SIL_IRQ_CONFIRM
-  #define PKG_SIZE 1
-  #define BSP_SIL_DYNAMIC_SPI
- #ifndef CONFIG_SILEAD_FP_PLATFORM
-  #define BSP_SIL_CTRL_SPI
- #endif /* !CONFIG_SILEAD_FP_PLATFORM */
+	#define DEVICE "/dev/spidev1.0"
+	/*#define BSP_SIL_IRQ_CONFIRM*/
+	#define PKG_SIZE 1
+	#define BSP_SIL_DYNAMIC_SPI
+	#ifndef CONFIG_SILEAD_FP_PLATFORM
+		#define BSP_SIL_CTRL_SPI
+	#endif /* !CONFIG_SILEAD_FP_PLATFORM */
 #elif defined(BSP_SIL_PLAT_QCOM)
-  #define QSEE_V4  /* Enable it if QSEE v4 or higher */
-  #include "silead_fp_qcom.h"
-  #define PLAT_H "silead_fp_qcom.c"
-
-  #define DEVICE "/dev/spidev0.0"
-  //#define BSP_SIL_IRQ_CONFIRM
-  #define PKG_SIZE 4
-  #define TANAME "sileadta"
+	#define QSEE_V4  /* Enable it if QSEE v4 or higher */
+	#include "silead_fp_qcom.h"
+	#define PLAT_H "silead_fp_qcom.c"
+	#define DEVICE "/dev/spidev0.0"
+	/*#define BSP_SIL_IRQ_CONFIRM*/
+	#define PKG_SIZE 4
+	#define TANAME "sileadta"
 #elif defined(BSP_SIL_PLAT_SPRD)
-  #include "silead_fp_sprd.h"
-  #define PLAT_H "silead_fp_sprd.c"
-
-  #define DEVICE "/dev/spidev0.0"
-  //#define BSP_SIL_IRQ_CONFIRM
-  //#define BSP_SIL_QCOM_SPECIAL
-  #define PKG_SIZE 4
-  #define TANAME "silead"
+	#include "silead_fp_sprd.h"
+	#define PLAT_H "silead_fp_sprd.c"
+	#define DEVICE "/dev/spidev0.0"
+	/*#define BSP_SIL_IRQ_CONFIRM*/
+	/*#define BSP_SIL_QCOM_SPECIAL*/
+	#define PKG_SIZE 4
+	#define TANAME "silead"
 #else
-  #include "silead_fp_comm.h"
-  #define PLAT_H "silead_fp_comm.c"
-
-  #define DEVICE "/dev/spidev0.0"
-  //#define BSP_SIL_IRQ_CONFIRM
-  #define PKG_SIZE 4
-  #define TANAME ""
+	#include "silead_fp_comm.h"
+	#define PLAT_H "silead_fp_comm.c"
+	#define DEVICE "/dev/spidev0.0"
+	/*#define BSP_SIL_IRQ_CONFIRM*/
+	#define PKG_SIZE 4
+	#define TANAME ""
 #endif /* BSP_SIL_PLAT_XXX */
 
 #ifdef BSP_SIL_QCOM_SPECIAL
-  #define SIL_EVENT_BLANK         MSM_DRM_EARLY_EVENT_BLANK
-  #define SIL_EVENT_UNBLANK       MSM_DRM_BLANK_UNBLANK
-  #define SIL_EVENT_POWERDOWN     MSM_DRM_BLANK_POWERDOWN
-  #define SIL_REGISTER_CLIENT(a)  do{ msm_drm_register_client(a); }while(0)
+	#define SIL_EVENT_BLANK         MSM_DRM_EARLY_EVENT_BLANK
+	#define SIL_EVENT_UNBLANK       MSM_DRM_BLANK_UNBLANK
+	#define SIL_EVENT_POWERDOWN     MSM_DRM_BLANK_POWERDOWN
+	#define SIL_REGISTER_CLIENT(a)  do { msm_drm_register_client(a); }while(0)
 #else
-  #define SIL_EVENT_BLANK         FB_EVENT_BLANK
-  #define SIL_EVENT_UNBLANK       FB_BLANK_UNBLANK
-  #define SIL_EVENT_POWERDOWN     FB_BLANK_POWERDOWN
-  #define SIL_REGISTER_CLIENT(a)  do{ fb_register_client(a); }while(0)
+	#define SIL_EVENT_BLANK         FB_EVENT_BLANK
+	#define SIL_EVENT_UNBLANK       FB_BLANK_UNBLANK
+	#define SIL_EVENT_POWERDOWN     FB_BLANK_POWERDOWN
+	#define SIL_REGISTER_CLIENT(a)  do { fb_register_client(a); }while(0)
 #endif
 
 /* -------------------------------------------------------------------- */
 /*                            debug settings                            */
 /* -------------------------------------------------------------------- */
 typedef enum {
-	ERR_LOG=0,
+	ERR_LOG = 0,
 	DBG_LOG,
 	INFO_LOG,
 	ALL_LOG,
@@ -219,10 +257,10 @@ typedef enum {
 
 #define LOG_TAG "[+silead_fp-] "
 #define LOG_MSG_DEBUG(level, fmt, args...) do { \
-            if (sil_debug_level >= level) {\
-                pr_warn(LOG_TAG fmt, ##args); \
-            } \
-        } while (0)
+			if (sil_debug_level >= level) {\
+				pr_warn(LOG_TAG fmt, ##args); \
+			} \
+		} while (0)
 
 #endif /* __SILEAD_FP_H__ */
 

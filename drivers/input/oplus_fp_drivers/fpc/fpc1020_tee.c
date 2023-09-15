@@ -1,27 +1,7 @@
-/************************************************************************************
- ** File: - SDM660.LA.1.0\android\kernel\msm-4.4\drivers\input\misc\fpc1020_tee.c
- ** OPLUS_FEATURE_FINGERPRINT
- ** Copyright (C), 2008-2017, OPLUS Mobile Comm Corp., Ltd
- **
- ** Description:
- **                  fpc fingerprint kernel device driver
- **
- ** Version: 1.0
- ** Date created: 18:03:11, 13/10/2017
- ** TAG: BSP.Fingerprint.Basic
- **
- ** --------------------------- Revision History: --------------------------------
- **  <author>                      <data>                                  <desc>
- **  Ziqing.guo                  2017/10/13                  create the file, this file is common for 1140 and 1260
- **  Ziqing.guo                  2017/10/22                  disable irq by default, controlled by hal service
- **  Ziqing.guo                  2017/10/23                  add reference to the sensor type
- **  Ziqing.guo                  2017/11/15                  fix the problem of spin lock not initialized
- **  Ziqing.guo                  2017/11/23                  add to destroy the wakelock
- **  Ziqing.guo                  2018/03/13                  add fix for coverity 21935, 21734 (Uninitialized scalar variable)
- **  Ran.Chen                    2018/06/26                  add for 1023_2060_GLASS
- **  Yang.Tan                    2018/11/09                  add for 18531 fpc1511
- **  Hongyu.Lu                   2019/04/19                  add for SM6125 fpc1511
- ************************************************************************************/
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (C) 2018-2020 Oplus. All rights reserved.
+ */
 
 #include <linux/clk.h>
 #include <linux/delay.h>
@@ -37,7 +17,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/pinctrl/consumer.h>
 #include "../include/wakelock.h"
-//#include <soc/qcom/scm.h>
+//#include <net/scm.h>
 #include "../include/oplus_fp_common.h"
 
 #undef dev_info
@@ -65,9 +45,10 @@ struct vreg_config {
         int ua_load;
 };
 
-static const struct vreg_config const vreg_conf[] = {
+static const struct vreg_config vreg_conf[] = {
         { "vdd_io", 1800000UL, 1800000UL, 10000, },
         { "vmch", 2960000UL, 2960000UL, 10000, },
+        { "avdd_io", 3300000UL, 3300000UL, 10000, },
 };
 
 struct fpc1020_data {
@@ -77,9 +58,9 @@ struct fpc1020_data {
         struct mutex lock;
         bool prepared;
 
-#ifdef OPLUS_FEATURE_FINGERPRINT
+//#ifdef OPLUS_FEATURE_FINGERPRINT
         int irq_enabled;
-#endif
+//#endif
 
         struct pinctrl                                  *ts_pinctrl;
         struct pinctrl_state                *gpio_state_active;
@@ -177,7 +158,7 @@ found:
         return rc;
 }
 
-#ifdef OPLUS_FEATURE_FINGERPRINT
+//#ifdef OPLUS_FEATURE_FINGERPRINT
 static DEFINE_SPINLOCK(fpc1020_lock);
 
 static int fpc1020_enable_irq(struct fpc1020_data *fpc1020, bool enable)
@@ -206,7 +187,7 @@ static int fpc1020_enable_irq(struct fpc1020_data *fpc1020, bool enable)
 
         return 0;
 }
-#endif
+//#endif
 
 /**
  * sysf node to check the interrupt status of the sensor, the interrupt
@@ -256,10 +237,11 @@ static ssize_t regulator_enable_set(struct device *dev,
         }
         rc = vreg_setup(fpc1020, "vdd_io", enable);
         rc = vreg_setup(fpc1020, "vmch", enable);
+        rc = vreg_setup(fpc1020, "avdd_io", enable);
         return rc ? rc : count;
 }
 
-#ifdef OPLUS_FEATURE_FINGERPRINT
+//#ifdef OPLUS_FEATURE_FINGERPRINT
 static ssize_t irq_enable_set(struct device *dev,
                 struct device_attribute *attribute, const char *buffer, size_t count)
 {
@@ -289,7 +271,7 @@ static ssize_t irq_enable_get(struct device *dev,
         struct fpc1020_data* fpc1020 = dev_get_drvdata(dev);
         return scnprintf(buffer, PAGE_SIZE, "%i\n", fpc1020->irq_enabled);
 }
-#endif
+//#endif
 
 static ssize_t wakelock_enable_set(struct device *dev,
                 struct device_attribute *attribute, const char *buffer, size_t count)
@@ -321,9 +303,9 @@ static ssize_t wakelock_enable_set(struct device *dev,
 static DEVICE_ATTR(irq, S_IRUSR | S_IWUSR, irq_get, irq_ack);
 static DEVICE_ATTR(regulator_enable, S_IWUSR, NULL, regulator_enable_set);
 
-#ifdef OPLUS_FEATURE_FINGERPRINT
+//#ifdef OPLUS_FEATURE_FINGERPRINT
 static DEVICE_ATTR(irq_enable, S_IWUSR, irq_enable_get, irq_enable_set);
-#endif
+//#endif
 
 static DEVICE_ATTR(wakelock_enable, S_IWUSR, NULL, wakelock_enable_set);
 
@@ -396,7 +378,8 @@ static int fpc1020_probe(struct platform_device *pdev)
                         &&(FP_FPC_1023_GLASS != get_fpsensor_type())
                         &&(FP_FPC_1270 != get_fpsensor_type())
                         &&(FP_FPC_1511 != get_fpsensor_type())
-                        &&(F_1541 != get_fpsensor_type())) {
+                        &&(FP_FPC_1541 != get_fpsensor_type())
+                        &&(FP_FPC_1542 != get_fpsensor_type())) {
                 dev_err(dev, "found not fpc sensor\n");
                 rc = -EINVAL;
                 goto ERR_BEFORE_WAKELOCK;
@@ -430,10 +413,10 @@ static int fpc1020_probe(struct platform_device *pdev)
         /* Request that the interrupt should be wakeable */
         /*enable_irq_wake( gpio_to_irq( fpc1020->irq_gpio ) );*/
 
-#ifdef OPLUS_FEATURE_FINGERPRINT
+//#ifdef OPLUS_FEATURE_FINGERPRINT
         disable_irq_nosync(gpio_to_irq(fpc1020->irq_gpio));
         fpc1020->irq_enabled = 0;
-#endif
+//#endif
 
         rc = sysfs_create_group(&dev->kobj, &attribute_group);
         if (rc) {
@@ -443,6 +426,7 @@ static int fpc1020_probe(struct platform_device *pdev)
 
         rc = vreg_setup(fpc1020, "vdd_io", true);
         rc = vreg_setup(fpc1020, "vmch", true);
+        /*rc = vreg_setup(fpc1020, "avdd_io", enable);*/
         if (rc) {
                 dev_err(fpc1020->dev,
                                 "vreg_setup failed.\n");
@@ -481,7 +465,7 @@ static struct platform_driver fpc1020_driver = {
 
 static int __init fpc1020_init(void)
 {
-        if(platform_driver_register(&fpc1020_driver) ){
+        if (platform_driver_register(&fpc1020_driver)) {
                 pr_err("platform_driver_register fail");
                 return -EINVAL;
         }

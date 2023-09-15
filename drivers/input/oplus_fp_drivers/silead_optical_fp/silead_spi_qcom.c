@@ -1,29 +1,8 @@
-/************************************************************************************
- ** File: - silead_fp_platform.c
- ** OPLUS_FEATURE_FINGERPRINT
- ** Copyright (C), 2008-2017, OPLUS Mobile Comm Corp., Ltd
- **
- ** Description:
- **                  fpc fingerprint kernel device driver
- **
- ** Version: 1.0
- ** Date created: 18:03:11, 13/10/2017
- ** Author:Ran.Chen@Bsp.Finegrprint.Basic
- ** TAG: BSP.Fingerprint.Basic
- **
- **  Ran.Chen                 2018/06/24                  add fix for coverity 63621 63600 
- **  Ran.Chen                 2018/06/26                  add silead power_on and power_offf for deep_sleep
- **  Ran.Chen                 2018/06/30                  add for modify kernel warning (power on)
- **  Ran.Chen                 2018/07/07                  add for tp irq and lcd notify
- **  Ran.Chen                 2018/07/21                  add for get tp info
- **  Ran.Chen                 2018/08/01                  add for reset touchmode when close tp
- **  Ran.Chen                 2018/08/04                  modify for reduce the wakelock time
- **  Ran.Chen                 2018/08/06                  modify for close tplog
- **  Ran.Chen                 2018/08/13                  modify for netlink pid check (sync with 18351)
- **  Ran.Chen                 2018/08/14                  modify for set reset time to 4ms when power on
- **  Ran.Chen                 2018/11/26                  modify for SDM855
- **  Ran.Chen                 2018/11/27                  remove define MSM_DRM_ONSCREENFINGERPRINT_EVENT
- ***********************************************************************************/
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (C) 2018-2020 Oplus. All rights reserved.
+ */
+
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/ioctl.h>

@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/*
+ * Copyright (C) 2018-2020 Oplus. All rights reserved.
+ */
+
 #ifndef _FP_LINUX_DIRVER_H_
 #define _FP_LINUX_DIRVER_H_
 #include <linux/module.h>

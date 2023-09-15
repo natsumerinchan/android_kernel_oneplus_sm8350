@@ -1,23 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * @file   silead_fp_qcom.c
- * @brief  Contains silead_fp device implements for Qualcomm platform.
- *
- *
- * Copyright 2016-2018 Slead Inc.
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
- *
- * ------------------- Revision History ------------------------------
- * <author>    <date>   <version>     <desc>
- * Bill Yu    2018/5/2    0.1.0      Init version
- * Bill Yu    2018/5/20   0.1.1      Default wait 3ms after reset
- * Bill Yu    2018/6/5    0.1.2      Support chip enter power down
- *
+ * Copyright (C) 2018-2020 Oplus. All rights reserved.
  */
 
 #ifdef BSP_SIL_PLAT_QCOM

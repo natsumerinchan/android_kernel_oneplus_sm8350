@@ -304,8 +304,8 @@ static int silfp_parse_dts(struct silfp_data* fp_dev)
 	}
 
     /* get interrupt port from gpio */
-    fp_dev->int_port = gpio_to_irq(fp_dev->irq_gpio);
-    LOG_MSG_DEBUG(INFO_LOG, "%s, irq = %d\n", __func__, fp_dev->int_port);
+    fp_dev->port = gpio_to_irq(fp_dev->irq_gpio);
+    LOG_MSG_DEBUG(INFO_LOG, "%s, irq = %d\n", __func__, fp_dev->port);
 
     fp_dev->pin.pinctrl = devm_pinctrl_get(&pdev->dev);
     if (IS_ERR(fp_dev->pin.pinctrl)) {
@@ -334,18 +334,18 @@ static int silfp_parse_dts(struct silfp_data* fp_dev)
         return ret;
     }
 	if( SIL_LDO_DISBALE == 0 ) {
-	    fp_dev->pin.spi_default = pinctrl_lookup_state(fp_dev->pin.pinctrl, "spi-default");
-	    if (IS_ERR(fp_dev->pin.spi_default)) {
-	        ret = PTR_ERR(fp_dev->pin.spi_default);
-	        pr_info("%s can't find silfp spi-default\n", __func__);
-	        return ret;
-	    }
+	    // fp_dev->pin.spi_default = pinctrl_lookup_state(fp_dev->pin.pinctrl, "spi-default");
+	    // if (IS_ERR(fp_dev->pin.spi_default)) {
+	    //     ret = PTR_ERR(fp_dev->pin.spi_default);
+	    //     pr_info("%s can't find silfp spi-default\n", __func__);
+	    //     return ret;
+	    // }
 	    ret = of_property_read_u32(node,"vmch_enable",&vmch_enable );
 		if (ret) {
 	        pr_info("Error get vmch_enable\n");
 			vmch_enable = 0;
 	        }
-	    pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.spi_default);
+	    //pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.spi_default);
 	}
     /* Get power settings */
 
@@ -402,6 +402,25 @@ static int silfp_parse_dts(struct silfp_data* fp_dev)
 #endif /* !CONFIG_SILEAD_FP_PLATFORM */
 #endif /* CONFIG_OF */
     return 0;
+}
+
+/* -------------------------------------------------------------------- */
+/*                 set spi to default status                            */
+/* -------------------------------------------------------------------- */
+static int silfp_set_spi_default_status (struct silfp_data *fp_dev)
+{
+    int ret;
+#ifdef BSP_SIL_CTRL_SPI
+	fp_dev->pin.spi_default = pinctrl_lookup_state(fp_dev->pin.pinctrl, "spi-default");
+	if (IS_ERR(fp_dev->pin.spi_default)) {
+		ret = PTR_ERR(fp_dev->pin.spi_default);
+		pr_info("%s can't find silfp spi-default\n", __func__);
+		return ret;
+	}
+	pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.spi_default);
+	LOG_MSG_DEBUG(DBG_LOG, "set spi default status");
+#endif /* BSP_SIL_CTRL_SPI */
+    return ret;
 }
 
 static int silfp_set_spi(struct silfp_data *fp_dev, bool enable)
@@ -461,22 +480,22 @@ static int silfp_resource_init(struct silfp_data *fp_dev, struct fp_dev_init_t *
     if (status < 0){
         goto err;
     }
-    status = silfp_hw_poweron(fp_dev);
+    //status = silfp_hw_poweron(fp_dev);
     if (status < 0){
         goto err;
     }
-    /*fp_dev->int_port = of_get_named_gpio(fp_dev->spi->dev.of_node, "irq-gpios", 0);
+    /*fp_dev->port = of_get_named_gpio(fp_dev->spi->dev.of_node, "irq-gpios", 0);
     fp_dev->rst_port = of_get_named_gpio(fp_dev->spi->dev.of_node, "rst-gpios", 0); */
-    LOG_MSG_DEBUG(INFO_LOG, "[%s] int_port %d, rst_port %d.\n",__func__,fp_dev->int_port,fp_dev->rst_port);
-    /*if (fp_dev->int_port > 0 ) {
-        gpio_free(fp_dev->int_port);
+    LOG_MSG_DEBUG(INFO_LOG, "[%s] port %d, rst_port %d.\n",__func__,fp_dev->port,fp_dev->rst_port);
+    /*if (fp_dev->port > 0 ) {
+        gpio_free(fp_dev->port);
     }
 
     if (fp_dev->rst_port > 0 ) {
         gpio_free(fp_dev->rst_port);
     }*/
     pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.pins_irq);
-    fp_dev->irq = fp_dev->int_port; //gpio_to_irq(fp_dev->int_port);
+    fp_dev->irq = fp_dev->port; //gpio_to_irq(fp_dev->port);
     fp_dev->irq_is_disable = 0;
 
     ret  = request_irq(fp_dev->irq,
@@ -501,9 +520,19 @@ static int silfp_resource_init(struct silfp_data *fp_dev, struct fp_dev_init_t *
             status = -ENODEV;
             goto err_rst;
         } else {
-            gpio_direction_output(fp_dev->rst_port, 1);
+            //gpio_direction_output(fp_dev->rst_port, 1);
+            pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.pins_rst_l);
         }
     }
+
+    silfp_hw_poweron(fp_dev);
+    mdelay(5);
+
+    /*上电之后拉高RST，使能模组*/
+    pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.pins_rst_h);
+
+    /*配置spi 的上电后的默认状态，CS模式拉高输出*/
+    silfp_set_spi_default_status(fp_dev);
 
     if (!ret) {
         if (silfp_input_init(fp_dev)) {
@@ -532,13 +561,13 @@ err_input:
 
 err_rst:
     free_irq(fp_dev->irq, fp_dev);
-    gpio_direction_input(fp_dev->int_port);
+    gpio_direction_input(fp_dev->port);
 
 err_irq:
-    //gpio_free(fp_dev->int_port);
+    //gpio_free(fp_dev->port);
 
 err:
-    fp_dev->int_port = 0;
+    fp_dev->port = 0;
     fp_dev->rst_port = 0;
 
     return status;

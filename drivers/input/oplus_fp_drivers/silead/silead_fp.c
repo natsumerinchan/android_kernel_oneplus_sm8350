@@ -79,7 +79,7 @@
 #include "../include/oplus_fp_common.h"
 
 #define FP_DEV_NAME "silead_fp"
-#define FP_DEV_MAJOR 0    /* assigned */
+#define FP_DEV_MAJOR 0	/* assigned */
 
 #define UI_DISAPPEAR 0
 #define UI_READY 1 /* UI flag should compare with LCD fingerprint_op_mode */
@@ -103,29 +103,29 @@ struct silfp_msg_list {
 #endif /* !BSP_SIL_NETLINK */
 
 struct silfp_data {
-    dev_t            devt;
+    dev_t			devt;
     struct cdev cdev;
     spinlock_t  spi_lock;
-    struct spi_device    *spi;
+    struct spi_device	*spi;
     struct list_head  device_entry;
 
-    unsigned        users;
+    unsigned		users;
 
     struct device *dev;
     int ref;
 
     struct input_dev *input;
 
-    spinlock_t        irq_lock;
-    int        int_port;
+    spinlock_t		irq_lock;
+    int		int_port;
 //#ifdef VENDOR_EDIT
     int     irq_gpio;
 //#endif VENDOR_EDIT
-    int        irq;
+    int		irq;
     s32 irq_is_disable;
     int   irq_ignore;
     s32 power_is_off;
-    int        rst_port;
+    int		rst_port;
     struct work_struct  work;
     struct completion done;
     struct wake_lock wakelock;
@@ -203,14 +203,14 @@ static struct fp_dev_init_t silfp_dev_init_d = {
    out/target/product/.../system/usr/keylayout/Generic.kl
    kernel/include/uapi/linux/input.h
 
-    KEY_HOMEPAGE
-    KEY_HOME
-    KEY_MENU
-    KEY_BACK
-    KEY_POWER
-    KEY_CAMERA
-    KEY_VOLUMEUP
-    KEY_VOLUMEDOWN */
+	KEY_HOMEPAGE
+	KEY_HOME
+	KEY_MENU
+	KEY_BACK
+	KEY_POWER
+	KEY_CAMERA
+	KEY_VOLUMEUP
+	KEY_VOLUMEDOWN */
 
 typedef struct _key_map {
     int key_orig;
@@ -222,9 +222,9 @@ static nav_keymap_t keymap[] = {
     { NAV_KEY_DOWN,     KEY_DOWN,       },
     { NAV_KEY_RIGHT,    KEY_RIGHT,      },
     { NAV_KEY_LEFT,     KEY_LEFT,       },
-    { NAV_KEY_CLICK,    KEY_CAMERA,   },
-    { NAV_KEY_DCLICK,   KEY_CAMERA,   },
-    { NAV_KEY_LONGPRESS,KEY_CAMERA,   },
+    { NAV_KEY_CLICK,    KEY_PRINT,   },
+    { NAV_KEY_DCLICK,   KEY_HOMEPAGE,   },
+    { NAV_KEY_LONGPRESS,KEY_PRINT,   },
 };
 
 static LIST_HEAD(device_list);
@@ -262,10 +262,10 @@ static int silfp_hw_poweron(struct silfp_data *fp_dev);
 static fp_debug_level_t sil_debug_level = ALL_LOG;
 
 /*#define LOG_MSG_DEBUG(level, fmt, args...) do { \
-            if (debug_level >= level) {\
-                pr_warn(LOG_TAG fmt, ##args); \
-            } \
-        } while (0)
+			if (debug_level >= level) {\
+				pr_warn(LOG_TAG fmt, ##args); \
+			} \
+		} while (0)
 */
 #include PLAT_H
 
@@ -677,7 +677,7 @@ static void silfp_work_func(struct work_struct *work)
 /* -------------------------------------------------------------------- */
 /*                          key event functions                         */
 /* -------------------------------------------------------------------- */
-static int silfp_keyevent(struct silfp_data    *fp_dev, struct fp_dev_key_t *pkey)
+static int silfp_keyevent(struct silfp_data	*fp_dev, struct fp_dev_key_t *pkey)
 {
     int ret = -EFAULT;
     int i;
@@ -996,9 +996,9 @@ static void silfp_wakelock_ctl(struct silfp_data *fp_dev, unsigned char lock)
 static long
 silfp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
-    int            err = 0;
-    int            retval = 0;
-    struct silfp_data    *fp_dev;
+    int			err = 0;
+    int			retval = 0;
+    struct silfp_data	*fp_dev;
     struct fp_dev_key_t key;
 
     /* Check type and command number */
@@ -1260,8 +1260,8 @@ silfp_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 static int silfp_open(struct inode *inode, struct file *filp)
 {
-    struct silfp_data    *fp_dev;
-    int            status = -ENXIO;
+    struct silfp_data	*fp_dev;
+    int			status = -ENXIO;
 
     mutex_lock(&device_list_lock);
 
@@ -1286,8 +1286,8 @@ static int silfp_open(struct inode *inode, struct file *filp)
 
 static int silfp_release(struct inode *inode, struct file *filp)
 {
-    struct silfp_data    *fp_dev;
-    int            status = 0;
+    struct silfp_data	*fp_dev;
+    int			status = 0;
 
     mutex_lock(&device_list_lock);
     fp_dev = filp->private_data;
@@ -1304,7 +1304,7 @@ static int silfp_release(struct inode *inode, struct file *filp)
 }
 
 static const struct file_operations silfp_dev_fops = {
-    .owner =    THIS_MODULE,
+    .owner =	THIS_MODULE,
     /* REVISIT switch to aio primitives, so that userspace
      * gets more complete API coverage.  It'll simplify things
      * too, except for the locking.
@@ -1330,9 +1330,9 @@ static const struct file_operations silfp_dev_fops = {
 
 static int silfp_probe(struct spi_device *spi)
 {
-    struct silfp_data    *fp_dev;
-    int            status = 0;
-    //unsigned long        minor;
+    struct silfp_data	*fp_dev;
+    int			status = 0;
+    //unsigned long		minor;
 
     LOG_MSG_DEBUG(INFO_LOG, "[%s] enter.\n", __func__);
     /* Allocate driver data */
@@ -1418,7 +1418,7 @@ err_devt:
 
 static int silfp_remove(struct spi_device *spi)
 {
-    struct silfp_data    *fp_dev = spi_get_drvdata(spi);
+    struct silfp_data	*fp_dev = spi_get_drvdata(spi);
 
     wake_lock_destroy(&fp_dev->wakelock);
     wake_lock_destroy(&fp_dev->wakelock_hal);

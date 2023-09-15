@@ -1,34 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * @file   silead_fp.c
- * @brief  Contains silead_fp device implementation.
- *
- *
- * Copyright 2016-2018 Slead Inc.
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
- *
- * ------------------- Revision History ------------------------------
- * <author>    <date>   <version>     <desc>
- * Bill Yu    2018/4/2    0.1.6      Init version
- * Bill Yu    2018/5/2    0.1.7      Fix compile error for some platform
- * Bill Yu    2018/5/20   0.1.8      Default wait 3ms after reset
- * Bill Yu    2018/5/28   0.1.9      Support poll/read if netlink id = 0
- * Bill Yu    2018/6/1    0.2.0      Support wakelock
- * Bill Yu    2018/6/5    0.2.1      Support chip enter power down
- * Bill Yu    2018/6/7    0.2.2      Support create proc node
- * Bill Yu    2018/6/27   0.2.3      Expand pwdn I/F
- * Bill Yu    2018/8/5    0.2.4      Support TP Up/Down I/F
- * Bill Yu    2018/12/5   0.2.5      Add Spreadtrum platform support
- * Dongnan.wu 2019/02/23  0.2.6      compatible with silead and goodix device
- * Bangxiong.Wu 2019/03/12 0.2.7     change loglevel for important msg output
- * Bangxiong.Wu 2019/04/11 1.0.0     add op_mode for lcd notifier
- *
- ******************************************************************************/
+ * Copyright (C) 2018-2020 Oplus. All rights reserved.
+ */
 
 #include <linux/init.h>
 #include <linux/module.h>

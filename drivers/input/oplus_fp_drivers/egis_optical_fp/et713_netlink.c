@@ -1,18 +1,7 @@
-/************************************************************************************
- ** File: - vendor/fingerprint/goodix/gf_hal/gf_queue.c
- ** VENDOR_EDIT
- ** Copyright (C), 2008-2018, OPLUS Mobile Comm Corp., Ltd
- **
- ** Description:
- **      Fingerprint SENSORTEST FOR GOODIX (SW23)
- **
- ** Version: 1.0
- ** Date created: 19:23:15,13/03/2018
- ** TAG: BSP.Fingerprint.Basic
- ** --------------------------- Revision History: --------------------------------
- **    <author>      <data>           <desc>
- **    oujinrong     2018/03/13       create the file, add fix for problem for coverity 17731
- ************************************************************************************/
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (C) 2018-2020 Oplus. All rights reserved.
+ */
 
 #include <linux/init.h>
 #include <linux/module.h>

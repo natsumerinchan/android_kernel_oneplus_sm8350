@@ -1,21 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * @file   silead_fp_qcom.h
- * @brief  Contains silead_fp Qualcomm platform specific head file.
- *
- *
- * Copyright 2016-2018 Slead Inc.
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
- *
- * ------------------- Revision History ------------------------------
- * <author>    <date>   <version>     <desc>
- * Bill Yu    2018/5/2    0.1.0      Init version
- *
+ * Copyright (C) 2018-2020 Oplus. All rights reserved.
  */
 
 #ifndef __SILEAD_FP_QCOM_H__
