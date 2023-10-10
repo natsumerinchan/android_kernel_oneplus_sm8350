@@ -6858,7 +6858,6 @@ static void walt_find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 			/*
 			 * This CPU is the target of an active migration that's
 			 * yet to complete. Avoid placing another task on it.
-			 * See check_for_migration()
 			 */
 			if (is_reserved(i))
 				continue;
