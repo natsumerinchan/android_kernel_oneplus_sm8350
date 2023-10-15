@@ -618,7 +618,7 @@ static BOOL b_push( uint8_t ub_Data )
 *
 * \return  Size of ub_Stack
 ********************************************************************/
-static uint8_t ub_SizeOfStack(void)
+static uint8_t ub_SizeOfStack()
 {
     return ub_StackPointer;
 }

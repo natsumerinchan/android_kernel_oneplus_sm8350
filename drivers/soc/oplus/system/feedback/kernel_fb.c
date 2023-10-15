@@ -657,7 +657,7 @@ failed_create_wq:
 	return ret;
 }
 
-static void __exit kernel_fb_exit(void)
+static void __exit kernel_fb_exit()
 {
 	kfree(bsp_fb_dwork);
 	bsp_fb_dwork = NULL;
