@@ -75,6 +75,8 @@
 			linux,sysdev_is_parent;
 			snps,disable-clk-gating;
 			snps,is-utmi-l1-suspend;
+			snps,usb2-lpm-disable;
+			snps,usb2-gadget-lpm-disable;
 			snps,dis_u2_susphy_quirk;
 			snps,has-lpm-erratum;
 			snps,hird-threshold = /bits/ 8 <0x0>;
