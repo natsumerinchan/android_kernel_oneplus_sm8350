@@ -321,10 +321,10 @@
 						  650 4450>;
 
 		qcom,vooc_multistep_initial_batt_temp = <1000>;
-		qcom,vooc_little_cool_temp = <160>;
-		qcom,vooc_cool_temp = <120>;
-		qcom,vooc_little_cold_temp = <50>;
-		qcom,vooc_normal_low_temp = <250>;
+		qcom,vooc_little_cool_temp = <250>;
+		qcom,vooc_cool_temp = <200>;
+		qcom,vooc_little_cold_temp = <150>;
+		qcom,vooc_normal_low_temp = <365>;
 		qcom,vooc_strategy_normal_current = <100>;
 		qcom,vooc_normal_to_little_cool_current = <100>;
 		qcom,vooc_batt_over_high_temp = <510>;
@@ -336,12 +336,12 @@
 		qcom,vooc-warm-allow-vol = <4000>;
 		qcom,vooc-warm-allow-soc = <50>;
 
-		qcom,vooc_strategy1_batt_high_temp0 = <385>;
-		qcom,vooc_strategy1_batt_high_temp1 = <395>;
+		qcom,vooc_strategy1_batt_high_temp0 = <400>;
+		qcom,vooc_strategy1_batt_high_temp1 = <410>;
 		qcom,vooc_strategy1_batt_high_temp2 = <420>;
 		qcom,vooc_strategy1_batt_low_temp2 = <410>;
-		qcom,vooc_strategy1_batt_low_temp1 = <385>;
-		qcom,vooc_strategy1_batt_low_temp0 = <375>;
+		qcom,vooc_strategy1_batt_low_temp1 = <400>;
+		qcom,vooc_strategy1_batt_low_temp0 = <390>;
 
 		qcom,vooc_strategy1_high_current0 = <30>;
 		qcom,vooc_strategy1_high_current1 = <30>;
@@ -836,15 +836,15 @@
 		qcom,input_current_camera_ma = <1200>;
 		qcom,input_current_calling_ma = <1500>;
 
-		qcom,led_warm_bat_decidegc = <350>;
-		qcom,led_high_bat_decidegc = <370>;
+		qcom,led_warm_bat_decidegc = <365>;
+		qcom,led_high_bat_decidegc = <380>;
 		qcom,input_current_led_ma = <1200>;
 		qcom,input_current_led_ma_high = <1200>;
 		qcom,input_current_led_ma_warm = <1500>;
 		qcom,input_current_led_ma_normal = <2000>;
 
-		qcom,vooc_temp_bat_normal_decidegc = <350>;
-		qcom,vooc_temp_bat_warm_decidegc = <370>;
+		qcom,vooc_temp_bat_normal_decidegc = <365>;
+		qcom,vooc_temp_bat_warm_decidegc = <380>;
 		qcom,vooc_temp_bat_hot_decidegc = <440>;
 		qcom,input_current_vooc_led_ma_high = <1200>;
 		qcom,input_current_vooc_led_ma_warm = <1800>;
@@ -975,7 +975,7 @@
 		qcom,ff1_warm_fastchg_ma = <1500>;
 
 		qcom,ffc2_normal_fastchg_ma = <1200>;/*12C~35c*/
-		qcom,ffc2_temp_warm_decidegc = <350>;
+		qcom,ffc2_temp_warm_decidegc = <365>;
 		qcom,ffc2_warm_fastchg_ma = <1300>;/*35C~40c*/
 		qcom,ffc2_temp_high_decidegc = <400>;
 		qcom,ffc2_temp_low_decidegc = <120>;
