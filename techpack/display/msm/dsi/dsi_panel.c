@@ -26,8 +26,6 @@
 #include <soc/oplus/boot_mode.h>
 #include "oplus_display_private_api.h"
 #include "oplus_dc_diming.h"
-#include "oplus_onscreenfingerprint.h"
-#include "oplus_aod.h"
 #include "oplus_display_panel_common.h"
 extern int oplus_display_mode;
 #endif
@@ -83,12 +81,6 @@ static int tp_irq = 0;
 }
 
 #endif /* OPLUS_FEATURE_TP_BASIC */
-
-
-#ifdef OPLUS_FEATURE_AOD_RAMLESS
-extern int oplus_display_update_aod_area_unlock(void);
-bool oplus_first_vid = false;
-#endif /* OPLUS_BUG_STABILITY */
 
 
 static void dsi_dce_prepare_pps_header(char *buf, u32 pps_delay_ms)
@@ -162,86 +154,6 @@ static int dsi_panel_vreg_put(struct dsi_panel *panel)
 	return rc;
 }
 
-#if defined(CONFIG_PXLW_IRIS5)
-static int dsi_iris5_vreg_get(struct dsi_panel *panel)
-{
-	int rc = 0;
-	int i;
-	struct regulator *vreg = NULL;
-
-	for (i = 0; i < panel->iris5_power_info.count; i++) {
-		vreg = devm_regulator_get(panel->parent,
-					  panel->iris5_power_info.vregs[i].vreg_name);
-		rc = PTR_RET(vreg);
-		if (rc) {
-			DSI_ERR("failed to get %s regulator\n",
-			       panel->iris5_power_info.vregs[i].vreg_name);
-			goto error_put;
-		}
-		panel->iris5_power_info.vregs[i].vreg = vreg;
-	}
-
-	return rc;
-error_put:
-	for (i = i - 1; i >= 0; i--) {
-		devm_regulator_put(panel->iris5_power_info.vregs[i].vreg);
-		panel->iris5_power_info.vregs[i].vreg = NULL;
-	}
-	return rc;
-}
-
-static int dsi_iris5_vreg_put(struct dsi_panel *panel)
-{
-	int rc = 0;
-	int i;
-
-	for (i = panel->iris5_power_info.count - 1; i >= 0; i--)
-		devm_regulator_put(panel->iris5_power_info.vregs[i].vreg);
-
-	return rc;
-}
-
-
-void iris5_gpio_request(struct dsi_panel *panel)
-{
-	struct dsi_panel_reset_config *r_config = &panel->reset_config;
-	int rc = 0;
-
-	DSI_ERR("%s for [%s] %s ", __func__, panel->name, panel->type);
-
-	if (gpio_is_valid(r_config->iris_vdd_gpio)) {
-		rc = gpio_request(r_config->iris_vdd_gpio, "iris_vdd");
-		if (rc)
-			DSI_ERR("request for iris vdd failed, rc=%d", rc);
-	}
-
-	if (gpio_is_valid(r_config->abyp_gpio)) {
-		rc = gpio_request(r_config->abyp_gpio, "analog_bypass");
-		if (rc)
-			DSI_ERR("request for iris abyp_gpio failed, rc=%d", rc);
-	}
-
-	if (gpio_is_valid(r_config->abyp_status_gpio)) {
-		rc = gpio_request(r_config->abyp_status_gpio, "analog_bypass_status");
-		if (rc)
-			DSI_ERR("request for iris analog bypass status gpio failed,rc=%d", rc);
-	}
-
-	if (gpio_is_valid(r_config->iris_rst_gpio)) {
-		rc = gpio_request(r_config->iris_rst_gpio, "iris_reset");
-		if (rc) {
-			DSI_ERR("request for iris_rst_gpio failed, rc=%d", rc);
-			if (gpio_is_valid(r_config->iris_vdd_gpio))
-				gpio_free(r_config->iris_vdd_gpio);
-			if (gpio_is_valid(r_config->abyp_gpio))
-				gpio_free(r_config->abyp_gpio);
-			if (gpio_is_valid(r_config->abyp_status_gpio))
-				gpio_free(r_config->abyp_status_gpio);
-		}
-	}
-}
-#endif
-
 static int dsi_panel_gpio_request(struct dsi_panel *panel)
 {
 	int rc = 0;
@@ -254,10 +166,6 @@ static int dsi_panel_gpio_request(struct dsi_panel *panel)
 			goto error;
 		}
 	}
-
-#if defined(CONFIG_PXLW_IRIS5)
-        iris5_gpio_request(panel);
-#endif
 
 	if (gpio_is_valid(r_config->disp_en_gpio)) {
 		rc = gpio_request(r_config->disp_en_gpio, "disp_en_gpio");
@@ -334,26 +242,6 @@ error:
 	return rc;
 }
 
-#if defined(CONFIG_PXLW_IRIS5)
-void iris5_gpio_free(struct dsi_panel *panel)
-{
-	struct dsi_panel_reset_config *r_config = &panel->reset_config;
-
-	DSI_ERR("%s for [%s] %s ", __func__, panel->name, panel->type);
-
-	if (gpio_is_valid(r_config->abyp_gpio))
-		gpio_free(r_config->abyp_gpio);
-	if (gpio_is_valid(r_config->abyp_status_gpio))
-		gpio_free(r_config->abyp_status_gpio);
-	if (gpio_is_valid(r_config->iris_rst_gpio))
-		gpio_free(r_config->iris_rst_gpio);
-	if (gpio_is_valid(r_config->iris_vdd_gpio))
-		gpio_free(r_config->iris_vdd_gpio);
-
-	return;
-}
-#endif
-
 static int dsi_panel_gpio_release(struct dsi_panel *panel)
 {
 	int rc = 0;
@@ -374,9 +262,6 @@ static int dsi_panel_gpio_release(struct dsi_panel *panel)
 	if (gpio_is_valid(panel->panel_test_gpio))
 		gpio_free(panel->panel_test_gpio);
 
-#if defined(CONFIG_PXLW_IRIS5)
-        iris5_gpio_free(panel);
-#endif
 #ifdef OPLUS_BUG_STABILITY
 	if (gpio_is_valid(r_config->panel_vout_gpio))
 		gpio_free(r_config->panel_vout_gpio);
@@ -436,153 +321,6 @@ int dsi_panel_trigger_esd_attack(struct dsi_panel *panel, bool trusted_vm_env)
 	return 0;
 }
 
-#if defined(CONFIG_PXLW_IRIS5)
-
-void iris5_gpio_parse(struct dsi_panel *panel)
-{
-	struct dsi_parser_utils *utils = &panel->utils;
-	static int iris_osd_gpio = -1;
-
-	DSI_DEBUG("%s for [%s] %s  ", __func__, panel->name, panel->type);
-	if (!strcmp(panel->type, "secondary")) {
-		panel->reset_config.abyp_gpio = -1;
-		panel->reset_config.abyp_status_gpio = -1;
-		panel->reset_config.iris_rst_gpio = - 1;
-		panel->reset_config.iris_osd_gpio = iris_osd_gpio;
-		if (!gpio_is_valid(panel->reset_config.iris_osd_gpio))
-			DSI_ERR("[%s:%d] osd gpio not specified", __func__, __LINE__,panel->reset_config.iris_osd_gpio);
-		panel->reset_config.iris_vdd_gpio = -1;
-	} else {
-		panel->reset_config.abyp_gpio = utils->get_named_gpio(utils->data,
-			"qcom,platform-analog-bypass-gpio", 0);
-		DSI_DEBUG("[%s:%d] abyp gpio %d", __func__, __LINE__,panel->reset_config.abyp_gpio);
-		if (!gpio_is_valid(panel->reset_config.abyp_gpio))
-			DSI_ERR("[%s:%d] abyp gpio not specified", __func__, __LINE__);
-		panel->reset_config.abyp_status_gpio = utils->get_named_gpio(utils->data,
-			"qcom,platform-analog-bypass-status-gpio", 0);
-		DSI_DEBUG("[%s:%d] abyp status gpio %d", __func__, __LINE__, panel->reset_config.abyp_status_gpio);
-		if (!gpio_is_valid(panel->reset_config.abyp_status_gpio))
-			DSI_ERR("[%s:%d] abyp status gpio not specified", __func__, __LINE__);
-		else {
-			DSI_ERR("[%s:%d] copy osd gpio by abyp status gpio.", __func__, __LINE__);
-			iris_osd_gpio = panel->reset_config.abyp_status_gpio;
-		}
-		panel->reset_config.iris_rst_gpio = utils->get_named_gpio(utils->data,
-			"qcom,platform-iris-reset-gpio", 0);
-		DSI_DEBUG("[%s:%d] iris reset gpio %d.", __func__, __LINE__,panel->reset_config.iris_rst_gpio);
-		if (!gpio_is_valid(panel->reset_config.iris_rst_gpio))
-			DSI_ERR("[%s:%d] iris reset gpio not specified", __func__, __LINE__);
-
-		panel->reset_config.iris_vdd_gpio = utils->get_named_gpio(utils->data,
-			"qcom,platform-iris-vdd-gpio", 0);
-		DSI_DEBUG("[%s:%d] iris vdd gpio %d.", __func__, __LINE__,panel->reset_config.iris_vdd_gpio);
-		if (!gpio_is_valid(panel->reset_config.iris_vdd_gpio))
-			DSI_ERR("[%s:%d] iris vdd gpio not specified", __func__, __LINE__);
-	}
-
-	return;
-}
-
-
-void iris5_power_off(struct dsi_panel *panel)
-{
-	struct dsi_panel_reset_config *r_config = &panel->reset_config;
-
-	DSI_DEBUG("%s for [%s] %s ", __func__, panel->name, panel->type);
-
-	if (gpio_is_valid(r_config->iris_rst_gpio))
-		gpio_set_value(r_config->iris_rst_gpio, 0);
-	if (gpio_is_valid(r_config->iris_vdd_gpio))
-		gpio_set_value(r_config->iris_vdd_gpio, 0);
-	else
-		iris5_control_pwr_regulator(panel,false);
-
-	if (panel->ext_clk) {
-		DSI_ERR("clk disable");
-		clk_disable_unprepare(panel->ext_clk);
-	}
-}
-
-
-void iris5_control_pwr_regulator(struct dsi_panel *panel, bool on)
-{
-	int rc;
-	//struct iris_cfg *pcfg = iris_get_cfg_by_index(DSI_PRIMARY);
-
-	rc = dsi_pwr_enable_regulator(&panel->iris5_power_info, on);
-	if (rc) {
-		DSI_ERR("can not %s iris\n", on? "power up" : "power off");
-	}
-}
-
-void iris5_reset(struct dsi_panel *panel)
-{
-	struct dsi_panel_reset_config *r_config = &panel->reset_config;
-	int rc;
-
-	DSI_DEBUG("iris5_reset for [%s]", panel->name);
-
-	if (panel->ext_clk) {
-		DSI_DEBUG("clk enable");
-		clk_prepare_enable(panel->ext_clk);
-		usleep_range(5000, 5000);
-	} else { // No need to control vdd and clk
-		DSI_ERR("clk does not valid");
-		goto ERROR_CLK;
-	}
-
-	if (gpio_is_valid(panel->reset_config.iris_rst_gpio)) {
-		rc = gpio_direction_output(r_config->iris_rst_gpio, 0);
-		if (rc) {
-			DSI_ERR("unable to set dir for iris reset gpio rc=%d", rc);
-			goto ERROR_RST_GPIO;
-		}
-		DSI_DEBUG("reset gpio 0");
-		gpio_set_value(r_config->iris_rst_gpio, 0);
-		usleep_range(1000, 1000);
-		gpio_set_value(r_config->iris_rst_gpio, 1);
-		usleep_range(2000, 2000);
-		DSI_DEBUG("reset gpio 1");
-	}
-	return;
-
-ERROR_RST_GPIO:
-	clk_disable_unprepare(panel->ext_clk);
-ERROR_CLK:
-	iris5_control_pwr_regulator(panel,false);
-
-}
-
-void iris5_power_on(struct dsi_panel *panel)
-{
-
-	struct dsi_panel_reset_config *r_config = &panel->reset_config;
-	int rc;
-
-	DSI_DEBUG("%s for [%s] %s ", __func__, panel->name, panel->type);
-
-	if (gpio_is_valid(r_config->abyp_gpio)) {
-		DSI_DEBUG("%s, bypass enable", __func__);
-		rc = gpio_direction_output(r_config->abyp_gpio, 1);
-		if (rc)
-			DSI_ERR("unable to set dir for iris vdd gpio rc=%d", rc);
-		gpio_set_value(r_config->abyp_gpio, 0);
-		}
-	if (gpio_is_valid(r_config->iris_vdd_gpio)) {
-		DSI_DEBUG("%s, vdd enable", __func__);
-		rc = gpio_direction_output(r_config->iris_vdd_gpio, 1);
-		if (rc)
-			DSI_ERR("unable to set dir for iris vdd gpio rc=%d", rc);
-		gpio_set_value(r_config->iris_vdd_gpio, 1);
-	} else { // No need to control vdd and clk
-		DSI_ERR("%s, vdd does not valid, use pmic", __func__);
-		iris5_control_pwr_regulator(panel,true);
-	}
-	usleep_range(5000, 5000);
-
-}
-#endif
-
 #ifdef OPLUS_BUG_STABILITY
 static int dsi_panel_tp_reset_config(struct dsi_panel *panel, bool enable)
 {
@@ -617,10 +355,6 @@ static int dsi_panel_reset(struct dsi_panel *panel)
 
 #ifdef OPLUS_BUG_STABILITY
 	pr_err("debug for dsi_panel_reset\n");
-#endif
-
-#if defined(CONFIG_PXLW_IRIS5)
-        iris5_reset(panel);
 #endif
 
 	if (gpio_is_valid(panel->reset_config.disp_en_gpio)) {
@@ -1008,10 +742,6 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 	if (gpio_is_valid(panel->reset_config.lcd_mode_sel_gpio))
 		gpio_set_value(panel->reset_config.lcd_mode_sel_gpio, 0);
 
-#if defined(CONFIG_PXLW_IRIS5)
-        iris5_power_off(panel);
-#endif
-    
 #ifdef OPLUS_BUG_STABILITY
 	if (gpio_is_valid(panel->reset_config.panel_vout_gpio)) {
 		gpio_set_value(panel->reset_config.panel_vout_gpio, 0);
@@ -1087,7 +817,7 @@ int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 	enum dsi_cmd_set_state state;
 	struct dsi_display_mode *mode;
 	const struct mipi_dsi_host_ops *ops = panel->host->ops;
-#if defined(OPLUS_FEATURE_PXLW_IRIS5) || defined(OPLUS_BUG_STABILITY)
+#if defined(OPLUS_BUG_STABILITY)
 	struct dsi_panel_cmd_set *oplus_cmd_set = NULL;
 #endif
 	if (!panel || !panel->cur_mode)
@@ -1111,12 +841,6 @@ int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 	if (type != DSI_CMD_READ_SAMSUNG_PANEL_REGISTER_ON
 		&& type != DSI_CMD_READ_SAMSUNG_PANEL_REGISTER_OFF) {
 		pr_err("dsi_cmd %s\n", cmd_set_prop_map[type]);
-	}
-	if ((DSI_CMD_AOD_HBM_ON == type) \
-		&& (panel->oplus_priv.is_aod_ramless \
-		&& !oplus_display_mode)) {
-		pr_err("skip dsi_cmd %s\n", cmd_set_prop_map[type]);
-		return rc;
 	}
 
 	if (oplus_seed_backlight) {
@@ -1250,7 +974,6 @@ static int dsi_panel_wled_register(struct dsi_panel *panel,
 #ifdef OPLUS_BUG_STABILITY
 extern int oplus_display_mode;
 extern int oplus_dsi_log_type;
-bool oplus_aod_mode = false;
 #endif /* OPLUS_BUG_STABILITY */
 static int dsi_panel_update_backlight(struct dsi_panel *panel,
 	u32 bl_lvl)
@@ -1275,23 +998,10 @@ static int dsi_panel_update_backlight(struct dsi_panel *panel,
 		bl_lvl = (((bl_lvl & 0xff) << 8) | (bl_lvl >> 8));
 
 #ifdef OPLUS_BUG_STABILITY
-	if ((get_oplus_display_scene() == OPLUS_DISPLAY_AOD_SCENE) && ( bl_lvl == 1)) {
-		if (display->panel->oplus_priv.is_aod_ramless)
-			oplus_aod_mode = true;
-		pr_err("dsi_cmd AOD mode return bl_lvl:%d\n",bl_lvl);
-		return 0;
-	} else {
-		if (display->panel->oplus_priv.is_aod_ramless)
-			oplus_aod_mode = false;
-	}
-
 	if (panel->is_hbm_enabled  && (bl_lvl != 0)) {
 		pr_err("backlight smooth check racing issue is_hbm_enabled\n");
 		return 0;
 	}
-
-	if (panel->oplus_priv.is_aod_ramless && !oplus_display_mode)
-		return 0;
 
 	if((bl_lvl == 0) && oplus_display_get_hbm_mode()) {
 		pr_err("set backlight 0 and recovery hbm to 0\n");
@@ -1317,9 +1027,6 @@ static int dsi_panel_update_backlight(struct dsi_panel *panel,
 			pr_err("Exit DC backlight\n");
 		}
 	}
-
-	if (display->panel->oplus_priv.is_aod_ramless)
-		oplus_aod_mode = false;
 
 	bl_lvl = oplus_panel_process_dimming_v2(panel, bl_lvl, false);
 	bl_lvl = oplus_panel_process_dimming_v3(panel, bl_lvl);
@@ -2680,9 +2387,6 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-loading-effect-1-command",
 	"qcom,mdss-dsi-loading-effect-2-command",
 	"qcom,mdss-dsi-loading-effect-off-command",
-#if defined(OPLUS_FEATURE_PXLW_IRIS5)
-	"iris,abyp-panel-command",
-#endif
 	"qcom,mdss-dsi-ili-read-on-command",
 	"qcom,mdss-dsi-ili-read-off-command",
 #endif /*OPLUS_BUG_STABILITY*/
@@ -2762,9 +2466,6 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-loading-effect-1-command-state",
 	"qcom,mdss-dsi-loading-effect-2-command-state",
 	"qcom,mdss-dsi-loading-effect-off-command-state",
-#if defined(OPLUS_FEATURE_PXLW_IRIS5)
-	"iris,abyp-panel-command-state",
-#endif
 	"qcom,mdss-dsi-ili-read-on-command-state",
 	"qcom,mdss-dsi-ili-read-off-command-state",
 #endif /*OPLUS_BUG_STABILITY*/
@@ -3069,12 +2770,14 @@ static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 	const char *string;
 	int i, rc = 0;
 
-	panel->ulps_feature_enabled = true;
+	panel->ulps_feature_enabled =
+		utils->read_bool(utils->data, "qcom,ulps-enabled");
 
 	DSI_DEBUG("%s: ulps feature %s\n", __func__,
 		(panel->ulps_feature_enabled ? "enabled" : "disabled"));
 
-	panel->ulps_suspend_enabled = true;
+	panel->ulps_suspend_enabled =
+		utils->read_bool(utils->data, "qcom,suspend-ulps-enabled");
 
 	DSI_DEBUG("%s: ulps during suspend feature %s\n", __func__,
 		(panel->ulps_suspend_enabled ? "enabled" : "disabled"));
@@ -3191,24 +2894,6 @@ static int dsi_panel_parse_power_cfg(struct dsi_panel *panel)
 		goto error;
 	}
 
-#if defined(CONFIG_PXLW_IRIS5)
-	if (!strcmp(panel->type, "primary"))
-	{
-		supply_name = "qcom,iris-supply-entries";
-
-		rc = dsi_pwr_of_get_vreg_data(&panel->utils,
-				&panel->iris5_power_info, supply_name);
-
-		if (rc) {
-			DSI_ERR("[%s] failed to parse vregs iris5_power_info\n", panel->name);
-			goto error;
-		}else
-			{
-			DSI_ERR("[%s] success to parse vregs iris5_power_info\n", panel->name);
-			}
-	}
-#endif
-
 error:
 	return rc;
 }
@@ -3254,17 +2939,10 @@ static int dsi_panel_parse_gpios(struct dsi_panel *panel)
 	const char *data;
 	struct dsi_parser_utils *utils = &panel->utils;
 	char *reset_gpio_name, *mode_set_gpio_name;
-#if defined(CONFIG_PXLW_IRIS5)
-	bool is_primary = false;
-	iris5_gpio_parse(panel);
-#endif
 
 	if (!strcmp(panel->type, "primary")) {
 		reset_gpio_name = "qcom,platform-reset-gpio";
 		mode_set_gpio_name = "qcom,panel-mode-gpio";
-#if defined(CONFIG_PXLW_IRIS5)
-		is_primary = true;
-#endif
 	} else {
 		reset_gpio_name = "qcom,platform-sec-reset-gpio";
 		mode_set_gpio_name = "qcom,panel-sec-mode-gpio";
@@ -3274,17 +2952,9 @@ static int dsi_panel_parse_gpios(struct dsi_panel *panel)
 					      reset_gpio_name, 0);
 	if (!gpio_is_valid(panel->reset_config.reset_gpio) &&
 		!panel->host_config.ext_bridge_mode) {
-#if defined(CONFIG_PXLW_IRIS5)
-		if (is_primary) {
-			rc = panel->reset_config.reset_gpio;
-			DSI_ERR("[%s] failed get reset gpio, rc=%d\n", panel->name, rc);
-			goto error;
-		}
-#else
 		rc = panel->reset_config.reset_gpio;
 		DSI_ERR("[%s] failed get reset gpio, rc=%d\n", panel->name, rc);
 		goto error;
-#endif
 	}
 
 #ifdef OPLUS_BUG_STABILITY
@@ -4738,15 +4408,6 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 		goto error;
 	}
 
-#if defined(CONFIG_PXLW_IRIS5)
-	rc = dsi_iris5_vreg_get(panel);
-	if (rc) {
-		DSI_ERR("[%s] failed to get iris5 regulators, rc=%d\n",
-		       panel->name, rc);
-		goto exit;
-	}
-#endif
-
 	panel->power_mode = SDE_MODE_DPMS_OFF;
 	drm_panel_init(&panel->drm_panel);
 	panel->drm_panel.dev = &panel->mipi_device.dev;
@@ -4760,9 +4421,6 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 
 	return panel;
 error_vreg_put:
-#if defined(CONFIG_PXLW_IRIS5)
-	(void)dsi_iris5_vreg_put(panel);
-#endif
 	(void)dsi_panel_vreg_put(panel);
 error:
 	kfree(panel);
@@ -4863,11 +4521,6 @@ int dsi_panel_drv_deinit(struct dsi_panel *panel)
 	if (rc)
 		DSI_ERR("[%s] failed to deinit gpios, rc=%d\n", panel->name,
 		       rc);
-#if defined(CONFIG_PXLW_IRIS5)
-	rc = dsi_iris5_vreg_put(panel);
-	if (rc)
-		DSI_ERR("[%s] failed to put iris5 regs, rc=%d\n", panel->name, rc);
-#endif
 	rc = dsi_panel_vreg_put(panel);
 	if (rc)
 		DSI_ERR("[%s] failed to put regs, rc=%d\n", panel->name, rc);
@@ -5365,10 +5018,6 @@ int dsi_panel_pre_prepare(struct dsi_panel *panel)
 
 	mutex_lock(&panel->panel_lock);
 
-#if defined(CONFIG_PXLW_IRIS5)
-	iris5_power_on(panel);
-#endif
-
 #ifdef OPLUS_BUG_STABILITY
 	if (!strcmp(panel->name,"nt36672c tm fhd plus video mode dsi panel") \
 		|| !strcmp(panel->name,"nt36672c dsjm fhd plus video mode dsi panel") \
@@ -5857,11 +5506,6 @@ int dsi_panel_mode_switch_to_cmd(struct dsi_panel *panel)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_CMD_TO_VID_SWITCH cmds, rc=%d\n",
 		       panel->name, rc);
 
-#ifdef OPLUS_FEATURE_AOD_RAMLESS
-	oplus_first_vid = false;
-	oplus_display_update_aod_area_unlock();
-#endif /* OPLUS_BUG_STABILITY */
-
 	mutex_unlock(&panel->panel_lock);
 	return rc;
 }
@@ -5882,10 +5526,6 @@ int dsi_panel_mode_switch_to_vid(struct dsi_panel *panel)
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_CMD_TO_VID_SWITCH cmds, rc=%d\n",
 		       panel->name, rc);
-
-#ifdef OPLUS_FEATURE_AOD_RAMLESS
-	oplus_first_vid = true;
-#endif /*OPLUS_BUG_STABILITY*/
 
 	mutex_unlock(&panel->panel_lock);
 	return rc;

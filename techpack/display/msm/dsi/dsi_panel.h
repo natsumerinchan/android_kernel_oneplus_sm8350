@@ -167,14 +167,6 @@ struct dsi_panel_reset_config {
 	int disp_en_gpio;
 	int lcd_mode_sel_gpio;
 	u32 mode_sel_state;
-#if defined(CONFIG_PXLW_IRIS5)
-        int iris_rst_gpio;
-        int abyp_gpio;
-        int abyp_status_gpio;
-        int iris_osd_gpio;
-        bool iris_osd_autorefresh;
-        int iris_vdd_gpio;
-#endif
 #ifdef OPLUS_BUG_STABILITY
 	int panel_vout_gpio;
 	int panel_vddr_aod_en_gpio;
@@ -209,7 +201,6 @@ struct dsi_panel_oplus_privite {
 	const char *vendor_name;
 	const char *manufacture_name;
 	bool skip_mipi_last_cmd;
-	bool is_pxlw_iris5;
 	bool dfps_idle_off;
 	bool is_osc_support;
 	u32 osc_clk_mode0_rate;
@@ -224,8 +215,6 @@ struct dsi_panel_oplus_privite {
 	bool cabc_enabled;
 	u32 cabc_status;
 /* #endif */
-
-	bool is_aod_ramless;
 
 	bool gamma_switch_enable;
 /********************************************
@@ -310,11 +299,6 @@ struct dsi_panel {
 	struct drm_panel_esd_config esd_config;
 
 	struct dsi_parser_utils utils;
-
-#if defined(CONFIG_PXLW_IRIS5)
-	struct dsi_regulator_info iris5_power_info;
-	struct clk *ext_clk;
-#endif
 
 	bool lp11_init;
 	bool ulps_feature_enabled;
@@ -482,16 +466,6 @@ void dsi_panel_calc_dsi_transfer_time(struct dsi_host_common_cfg *config,
 #ifdef OPLUS_BUG_STABILITY
 int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 			   enum dsi_cmd_set_type type);
-#endif
-
-#if defined(CONFIG_PXLW_IRIS5)
-void iris5_gpio_free(struct dsi_panel *panel);
-void iris5_gpio_request(struct dsi_panel *panel);
-void iris5_gpio_parse(struct dsi_panel *panel);
-void iris5_power_off(struct dsi_panel *panel);
-void iris5_control_pwr_regulator(struct dsi_panel *panel, bool on);
-void iris5_reset(struct dsi_panel *panel);
-void iris5_power_on(struct dsi_panel *panel);
 #endif
 
 int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt);

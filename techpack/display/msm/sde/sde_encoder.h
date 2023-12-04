@@ -185,6 +185,7 @@ struct sde_encoder_ops {
  * @recovery_events_enabled:	status of hw recovery feature enable by client
  * @elevated_ahb_vote:		increase AHB bus speed for the first frame
  *				after power collapse
+ * @pm_qos_cpu_req:		qos request for all cpu core frequency
  * @valid_cpu_mask:		actual voted cpu core mask
  * @mode_info:                  stores the current mode and should be used
  *				only in commit phase
@@ -243,7 +244,6 @@ struct sde_encoder_virt {
 	struct kthread_work input_event_work;
 	struct kthread_work esd_trigger_work;
 	struct input_handler *input_handler;
-	bool input_handler_registered;
 	struct msm_display_topology topology;
 	bool vblank_enabled;
 	bool idle_pc_restore;
@@ -257,6 +257,7 @@ struct sde_encoder_virt {
 
 	bool recovery_events_enabled;
 	bool elevated_ahb_vote;
+	struct dev_pm_qos_request pm_qos_cpu_req[NR_CPUS];
 	struct cpumask valid_cpu_mask;
 	struct msm_mode_info mode_info;
 	bool delay_kickoff;
@@ -632,11 +633,4 @@ static inline bool sde_encoder_is_widebus_enabled(struct drm_encoder *drm_enc)
 	sde_enc = to_sde_encoder_virt(drm_enc);
 	return sde_enc->mode_info.wide_bus_en;
 }
-
-/**
- * sde_encoder_trigger_early_wakeup - trigger early wake up
- * @drm_enc:    Pointer to drm encoder structure
- */
-void sde_encoder_trigger_early_wakeup(struct drm_encoder *drm_enc);
-
 #endif /* __SDE_ENCODER_H__ */

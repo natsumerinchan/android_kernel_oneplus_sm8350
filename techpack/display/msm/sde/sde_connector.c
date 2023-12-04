@@ -1824,37 +1824,10 @@ void sde_connector_prepare_fence(struct drm_connector *connector)
 void sde_connector_complete_commit(struct drm_connector *connector,
 		ktime_t ts, enum sde_fence_event fence_event)
 {
-#ifdef OPLUS_FEATURE_AOD_RAMLESS
-	struct sde_connector *c_conn = NULL;
-	struct dsi_display *dsi_display = NULL;
-#endif
 	if (!connector) {
 		SDE_ERROR("invalid connector\n");
 		return;
 	}
-#ifdef OPLUS_FEATURE_AOD_RAMLESS
-	c_conn = to_sde_connector(connector);
-
-	if (!c_conn) {
-		SDE_ERROR("Invalid params sde_connector null\n");
-		return;
-	}
-
-	dsi_display = c_conn->display;
-
-	if (!dsi_display || !dsi_display->panel) {
-		SDE_ERROR("Invalid params dsi_display or panel null\n");
-		return;
-	}
-
-	if (dsi_display->panel->oplus_priv.is_aod_ramless) {
-		if (skip_backlight > 0) {
-			skip_backlight--;
-		} else if (skip_backlight == 0) {
-			sde_backlight_device_update_status(c_conn->bl_device);
-		}
-	}
-#endif
 	/* signal connector's retire fence */
 	sde_fence_signal(to_sde_connector(connector)->retire_fence,
 			ts, fence_event);

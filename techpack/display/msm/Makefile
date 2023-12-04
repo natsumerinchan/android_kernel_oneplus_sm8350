@@ -143,8 +143,6 @@ msm_drm-$(CONFIG_DRM_MSM) += \
 msm_drm-$(CONFIG_DRM_OPLUS) += ../oplus/oplus_dsi_support.o \
 	../oplus/oplus_display_private_api.o \
 	../oplus/oplus_dc_diming.o \
-	../oplus/oplus_onscreenfingerprint.o \
-	../oplus/oplus_aod.o \
 	../oplus/oplus_ffl.o \
 	../oplus/oplus_display_panel.o \
 	../oplus/oplus_display_panel_power.o \

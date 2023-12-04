@@ -28,16 +28,6 @@
 
 #include "sde_dbg.h"
 
-#ifdef OPLUS_BUG_STABILITY
-#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-#include <soc/oplus/system/oplus_mm_kevent_fb.h>
-#endif //CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-#endif /* OPLUS_BUG_STABILITY */
-
-#if IS_ENABLED(CONFIG_OPLUS_FEATURE_THEIA)
-#include <soc/oplus/system/theia_send_event.h> /* for theia_send_event etc */
-#endif
-
 #define DSI_CTRL_DEFAULT_LABEL "MDSS DSI CTRL"
 
 #define DSI_CTRL_TX_TO_MS     200
@@ -56,17 +46,6 @@
 		fmt, c->name, ##__VA_ARGS__)
 #define DSI_CTRL_WARN(c, fmt, ...)	DRM_WARN("[msm-dsi-warn]: %s: " fmt,\
 		c ? c->name : "inv", ##__VA_ARGS__)
-
-#ifdef OPLUS_BUG_STABILITY
-#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-#define DSI_CTRL_MM_ERR(c, fmt, ...) \
-	do { \
-		DRM_DEV_ERROR(NULL, "[msm-dsi-error]: %s: "\
-				fmt, c ? c->name : "inv", ##__VA_ARGS__); \
-		mm_fb_display_kevent_named(MM_FB_KEY_RATELIMIT_1H, fmt, ##__VA_ARGS__); \
-	} while(0)
-#endif //CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-#endif /* OPLUS_BUG_STABILITY */
 
 struct dsi_ctrl_list_item {
 	struct dsi_ctrl *ctrl;
@@ -428,40 +407,6 @@ static void dsi_ctrl_dma_cmd_wait_for_done(struct work_struct *work)
 					status);
 			DSI_CTRL_WARN(dsi_ctrl,
 					"dma_tx done but irq not triggered\n");
-
-#ifdef OPLUS_BUG_STABILITY
-#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-			if (dsi_ctrl->irq_info.irq_num != -1) {
-				struct irq_desc *desc = irq_to_desc(dsi_ctrl->irq_info.irq_num);
-				unsigned long flags;
-
-				if (desc) {
-					spin_lock_irqsave(&dsi_ctrl->irq_info.irq_lock, flags);
-					if (dsi_ctrl->irq_info.irq_stat_mask) {
-						if (desc->depth > 0) {
-							DSI_CTRL_WARN(dsi_ctrl, "dsi_ctrl irq depth[%d] Unexpected, repair it\n",
-									desc->depth);
-							enable_irq(dsi_ctrl->irq_info.irq_num);
-						}
-					}
-					spin_unlock_irqrestore(&dsi_ctrl->irq_info.irq_lock, flags);
-				}
-			}
-
-			if (dsi_ctrl->irq_info.irq_stat_refcount[DSI_SINT_CMD_MODE_DMA_DONE] > 1) {
-				DSI_CTRL_WARN(dsi_ctrl, "dsi_ctrl cmd dma done irq stat refcount[%d] Unexpected, repair it\n",
-							dsi_ctrl->irq_info.irq_stat_refcount[DSI_SINT_CMD_MODE_DMA_DONE]);
-				dsi_ctrl_disable_status_interrupt(dsi_ctrl,
-						DSI_SINT_CMD_MODE_DMA_DONE);
-
-				mm_fb_display_kevent("DisplayDriverID@@405$$", MM_FB_KEY_RATELIMIT_NONE, "dma_tx irq trigger fixup irq status=%x", status);
-			}
-			mm_fb_display_kevent("DisplayDriverID@@413$$", MM_FB_KEY_RATELIMIT_1H, "dma_tx irq trigger err irq status=%x", status);
-#if IS_ENABLED(CONFIG_OPLUS_FEATURE_THEIA)
-			theia_send_event(THEIA_EVENT_PTR_TIMEOUT_BLACKSCREEN, THEIA_LOGINFO_KERNEL_LOG, current->pid, "dma_tx irq trigger error");
-#endif
-#endif //CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-#endif /* OPLUS_BUG_STABILITY */
 
 		} else {
 			DSI_CTRL_ERR(dsi_ctrl,
@@ -1106,14 +1051,6 @@ static int dsi_ctrl_enable_supplies(struct dsi_ctrl *dsi_ctrl, bool enable)
 		if (rc < 0) {
 			DSI_CTRL_ERR(dsi_ctrl,
 				"Power resource enable failed, rc=%d\n", rc);
-			#ifdef OPLUS_BUG_STABILITY
-			#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-			DSI_CTRL_MM_ERR(dsi_ctrl, "DisplayDriverID@@406$$Power resource enable failed, rc=%d\n", rc);
-			#endif
-			#endif
-#if IS_ENABLED(CONFIG_OPLUS_FEATURE_THEIA)
-			theia_send_event(THEIA_EVENT_HARDWARE_ERROR, THEIA_LOGINFO_KERNEL_LOG, current->pid, "Power resource enable failed");
-#endif
 			goto error;
 		}
 
@@ -1122,14 +1059,6 @@ static int dsi_ctrl_enable_supplies(struct dsi_ctrl *dsi_ctrl, bool enable)
 				&dsi_ctrl->pwr_info.host_pwr, true);
 			if (rc) {
 				DSI_CTRL_ERR(dsi_ctrl, "failed to enable host power regs\n");
-				#ifdef OPLUS_BUG_STABILITY
-				#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-				DSI_CTRL_MM_ERR(dsi_ctrl, "DisplayDriverID@@406$$failed to enable host power regs\n");
-				#endif
-				#endif
-#if IS_ENABLED(CONFIG_OPLUS_FEATURE_THEIA)
-				theia_send_event(THEIA_EVENT_HARDWARE_ERROR, THEIA_LOGINFO_KERNEL_LOG, current->pid, "failed to enable host power regs");
-#endif
 				goto error_get_sync;
 			}
 		}
@@ -3190,8 +3119,6 @@ int dsi_ctrl_host_timing_update(struct dsi_ctrl *dsi_ctrl)
 		return -EINVAL;
 	}
 
-	mutex_lock(&dsi_ctrl->ctrl_lock);
-
 	if (dsi_ctrl->hw.ops.host_setup)
 		dsi_ctrl->hw.ops.host_setup(&dsi_ctrl->hw,
 				&dsi_ctrl->host_config.common_config);
@@ -3209,11 +3136,9 @@ int dsi_ctrl_host_timing_update(struct dsi_ctrl *dsi_ctrl)
 				0x0, NULL);
 	} else {
 		DSI_CTRL_ERR(dsi_ctrl, "invalid panel mode for resolution switch\n");
-		mutex_unlock(&dsi_ctrl->ctrl_lock);
 		return -EINVAL;
 	}
 
-	mutex_unlock(&dsi_ctrl->ctrl_lock);
 	return 0;
 }
 
@@ -3585,26 +3510,14 @@ int dsi_ctrl_cmd_transfer(struct dsi_ctrl *dsi_ctrl,
 
 	if (*flags & DSI_CTRL_CMD_READ) {
 		rc = dsi_message_rx(dsi_ctrl, msg, flags);
-		if (rc <= 0) {
+		if (rc <= 0)
 			DSI_CTRL_ERR(dsi_ctrl, "read message failed read length, rc=%d\n",
 					rc);
-			#ifdef OPLUS_BUG_STABILITY
-			#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-			DSI_CTRL_MM_ERR(dsi_ctrl, "read message failed read length, rc=%d\n",rc);
-			#endif
-			#endif
-		}
 	} else {
 		rc = dsi_message_tx(dsi_ctrl, msg, flags);
-		if (rc) {
+		if (rc)
 			DSI_CTRL_ERR(dsi_ctrl, "command msg transfer failed, rc = %d\n",
 					rc);
-			#ifdef OPLUS_BUG_STABILITY
-			#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-			DSI_CTRL_MM_ERR(dsi_ctrl, "command msg transfer failed, rc = %d\n",rc);
-			#endif
-			#endif
-		}
 	}
 
 	dsi_ctrl_update_state(dsi_ctrl, DSI_CTRL_OP_CMD_TX, 0x0);

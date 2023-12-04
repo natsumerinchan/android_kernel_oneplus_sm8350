@@ -22,11 +22,6 @@
 #include "sde_dbg.h"
 #include "dsi_parser.h"
 #ifdef OPLUS_BUG_STABILITY
-#ifdef OPLUS_BUG_STABILITY
-#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-#include <soc/oplus/system/oplus_mm_kevent_fb.h>
-#endif //CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-#endif /* OPLUS_BUG_STABILITY */
 #include <linux/msm_drm_notify.h>
 #include <linux/notifier.h>
 #include "oplus_display_private_api.h"
@@ -76,8 +71,6 @@ static struct dsi_display_boot_param boot_displays[MAX_DSI_ACTIVE_DISPLAY] = {
 	{.boot_param = dsi_display_primary},
 	{.boot_param = dsi_display_secondary},
 };
-
-static unsigned int cur_refresh_rate = 60;
 
 static const struct of_device_id dsi_display_dt_match[] = {
 	{.compatible = "qcom,dsi-display"},
@@ -697,12 +690,6 @@ static bool dsi_display_validate_reg_read(struct dsi_panel *panel)
 	int group = 0, count = 0;
 	struct drm_panel_esd_config *config;
 
-#ifdef OPLUS_BUG_STABILITY
-#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-	int rc = 0;
-#endif /*CONFIG_OPLUS_FEATURE_MM_FEEDBACK*/
-#endif
-
 	if (!panel)
 		return false;
 
@@ -720,11 +707,6 @@ static bool dsi_display_validate_reg_read(struct dsi_panel *panel)
 				config->status_value[group + i]) {
 				DRM_ERROR("mismatch: 0x%x\n",
 						config->return_buf[i]);
-				#ifdef OPLUS_BUG_STABILITY
-				#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-				rc = -1;
-				#endif /*CONFIG_OPLUS_FEATURE_MM_FEEDBACK*/
-				#endif  /*OPLUS_BUG_STABILITY*/
 				break;
 			}
 		}
@@ -733,22 +715,6 @@ static bool dsi_display_validate_reg_read(struct dsi_panel *panel)
 			return true;
 		group += len;
 	}
-
-#ifdef OPLUS_BUG_STABILITY
-#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-	if (rc <= 0) {
-		char payload[150] = "";
-		int cnt = 0;
-		cnt += scnprintf(payload + cnt, sizeof(payload) - cnt, "DisplayDriverID@@408$$");
-		cnt += scnprintf(payload + cnt, sizeof(payload) - cnt, "ESD:");
-		for (i = 0; i < len; ++i)
-			cnt += scnprintf(payload + cnt, sizeof(payload) - cnt, "[%02x] ", config->return_buf[i]);
-
-		DRM_ERROR("ESD check failed: %s\n", payload);
-		mm_fb_display_kevent(payload, MM_FB_KEY_RATELIMIT_1H, "ESD check failed");
-	}
-#endif //CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-#endif  /*OPLUS_BUG_STABILITY*/
 
 	return false;
 }
@@ -958,18 +924,6 @@ static int dsi_display_status_check_te(struct dsi_display *display,
 					esd_te_timeout)) {
 			DSI_ERR("TE check failed\n");
 			dsi_display_change_te_irq_status(display, false);
-			#ifdef OPLUS_BUG_STABILITY
-			#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-			{
-				char payload[150] = "";
-
-				scnprintf(payload, sizeof(payload), "ESD:");
-
-				DRM_ERROR("ESD TE check failed: %s\n", payload);
-				mm_fb_display_kevent(payload, MM_FB_KEY_RATELIMIT_1H, "ESD TE check failed");
-			}
-			#endif /* CONFIG_OPLUS_FEATURE_MM_FEEDBACK */
-			#endif /* OPLUS_BUG_STABILITY */
 			return -EINVAL;
 		}
 	}
@@ -4484,14 +4438,6 @@ static int dsi_display_res_init(struct dsi_display *display)
 		goto error_ctrl_put;
 	}
 
-#if defined(CONFIG_PXLW_IRIS5)
-        display->panel->ext_clk = devm_clk_get(&display->pdev->dev, "pw_bb_clk3");
-        if (IS_ERR_OR_NULL(display->panel->ext_clk)) {
-            rc = PTR_ERR(display->panel->ext_clk);
-            DSI_ERR("failed to get %s, rc=%d\n", "pw_bb_clk3", rc);
-            }
-#endif
-
 	display_for_each_ctrl(i, display) {
 		struct msm_dsi_phy *phy = display->ctrl[i].phy;
 
@@ -5029,22 +4975,10 @@ static int dsi_display_dynamic_clk_switch_vid(struct dsi_display *display,
 		BIT(DSI_FIFO_OVERFLOW);
 	dsi_display_mask_ctrl_error_interrupts(display, mask, true);
 
-#ifdef OPLUS_BUG_STABILITY
-	/* update the phy timings based on new mode */
-	if (!strcmp(display->panel->oplus_priv.vendor_name,"AMS644VA04")) {
-		DSI_INFO("samsung ramless oled enable lp11 phy timing is fixed!\n");
-	} else {
-		display_for_each_ctrl(i, display) {
-			ctrl = &display->ctrl[i];
-			dsi_phy_update_phy_timings(ctrl->phy, &display->config);
-		}
-	}
-#else
 	display_for_each_ctrl(i, display) {
 		ctrl = &display->ctrl[i];
 		dsi_phy_update_phy_timings(ctrl->phy, &display->config);
 	}
-#endif /*OPLUS_BUG_STABILITY*/
 
 	/* back up existing rates to handle failure case */
 	bkp_freq.byte_clk_rate = m_ctrl->ctrl->clk_freq.byte_clk_rate;
@@ -5668,10 +5602,6 @@ int dsi_display_cont_splash_config(void *dsi_display)
 		       display->name, rc);
 		goto clk_manager_update;
 	}
-
-#if defined(CONFIG_PXLW_IRIS5)
-	iris5_control_pwr_regulator(display->panel,true);
-#endif
 
 	mutex_unlock(&display->display_lock);
 
@@ -6343,23 +6273,6 @@ end:
 	return rc;
 }
 
-#if defined(CONFIG_PXLW_IRIS5)
-
-void iris5_deinit(struct dsi_display *display)
-{
-	struct dsi_panel *panel;
-
-	panel = display->panel;
-
-	if (panel->ext_clk) {
-		devm_clk_put(&display->pdev->dev, panel->ext_clk);
-		panel->ext_clk = NULL;
-	}
-
-	//dsi_iris_vreg_put();
-}
-#endif
-
 int dsi_display_dev_remove(struct platform_device *pdev)
 {
 	int rc = 0, i = 0;
@@ -6372,9 +6285,6 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 	}
 
 	display = platform_get_drvdata(pdev);
-#if defined(CONFIG_PXLW_IRIS5)
-        iris5_deinit(display);
-#endif
 
 	/* decrement ref count */
 	of_node_put(display->panel_node);
@@ -6478,6 +6388,7 @@ int dsi_display_drm_bridge_init(struct dsi_display *display,
 
 	display->bridge = bridge;
 	priv->bridges[priv->num_bridges++] = &bridge->base;
+
 	if (display->tx_cmd_buf == NULL) {
 		rc = dsi_host_alloc_cmd_tx_buffer(display);
 		if (rc)
@@ -8165,15 +8076,9 @@ int dsi_display_prepare(struct dsi_display *display)
 		if (!is_skip_op_required(display)) {
 			/* update dsi ctrl for new mode */
 			rc = dsi_display_pre_switch(display);
-			if (rc) {
+			if (rc)
 				DSI_ERR("[%s] panel pre-switch failed, rc=%d\n",
 					display->name, rc);
-				#ifdef OPLUS_BUG_STABILITY
-				#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-				DSI_MM_ERR("[dsi error] [%s] panel pre-switch failed, rc=%d\n",display->name, rc);
-				#endif /*CONFIG_OPLUS_FEATURE_MM_FEEDBACK*/
-				#endif
-			}
 			goto error;
 		}
 	}
@@ -8573,11 +8478,6 @@ static void dsi_display_panel_id_notification(struct dsi_display *display)
 	}
 }
 
-unsigned int dsi_panel_get_refresh_rate(void)
-{
-	return READ_ONCE(cur_refresh_rate);
-}
-
 int dsi_display_enable(struct dsi_display *display)
 {
 	int rc = 0;
@@ -8601,15 +8501,6 @@ int dsi_display_enable(struct dsi_display *display)
 	if (is_skip_op_required(display)) {
 
 		dsi_display_config_ctrl_for_cont_splash(display);
-#if defined(CONFIG_PXLW_IRIS5)
-		if (display->panel->ext_clk) {
-			DSI_DEBUG("clk enable\n");
-			clk_prepare_enable(display->panel->ext_clk);
-			usleep_range(5000, 5000);
-		} else { // No need to control vdd and clk
-			DSI_ERR("clk not prepare for iris5\n");
-		}
-#endif
 
 		rc = dsi_display_splash_res_cleanup(display);
 		if (rc) {
@@ -8630,7 +8521,6 @@ int dsi_display_enable(struct dsi_display *display)
 	mutex_lock(&display->display_lock);
 
 	mode = display->panel->cur_mode;
-	WRITE_ONCE(cur_refresh_rate, mode->timing.refresh_rate);
 
 	if (mode->dsi_mode_flags & DSI_MODE_FLAG_DMS) {
 		rc = dsi_panel_post_switch(display->panel);

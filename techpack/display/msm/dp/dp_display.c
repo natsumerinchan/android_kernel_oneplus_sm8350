@@ -162,7 +162,6 @@ struct dp_display_private {
 
 	struct platform_device *pdev;
 	struct device_node *aux_switch_node;
-	bool aux_switch_ready;
 	struct dentry *root;
 	struct completion notification_comp;
 	struct completion attention_comp;
@@ -1337,55 +1336,6 @@ static int dp_display_process_hpd_low(struct dp_display_private *dp)
 	return rc;
 }
 
-static int dp_display_fsa4480_callback(struct notifier_block *self,
-		unsigned long event, void *data)
-{
-	return 0;
-}
-
-static int dp_display_init_aux_switch(struct dp_display_private *dp)
-{
-	int rc = 0;
-	struct notifier_block nb;
-	const u32 max_retries = 50;
-	u32 retry;
-
-	if (dp->aux_switch_ready)
-	       return rc;
-
-	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
-
-	nb.notifier_call = dp_display_fsa4480_callback;
-	nb.priority = 0;
-
-	/*
-	 * Iteratively wait for reg notifier which confirms that fsa driver is probed.
-	 * Bootup DP with cable connected usecase can hit this scenario.
-	 */
-	for (retry = 0; retry < max_retries; retry++) {
-		rc = fsa4480_reg_notifier(&nb, dp->aux_switch_node);
-		if (rc == 0) {
-			DP_DEBUG("registered notifier successfully\n");
-			dp->aux_switch_ready = true;
-			break;
-		} else {
-			DP_DEBUG("failed to register notifier retry=%d rc=%d\n", retry, rc);
-			msleep(100);
-		}
-	}
-
-	if (retry == max_retries) {
-		DP_WARN("Failed to register fsa notifier\n");
-		dp->aux_switch_ready = false;
-		return rc;
-	}
-
-	fsa4480_unreg_notifier(&nb, dp->aux_switch_node);
-
-	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, rc);
-	return rc;
-}
-
 static int dp_display_usbpd_configure_cb(struct device *dev)
 {
 	int rc = 0;
@@ -1403,11 +1353,7 @@ static int dp_display_usbpd_configure_cb(struct device *dev)
 	}
 
 	if (!dp->debug->sim_mode && !dp->parser->no_aux_switch
-		&& !dp->parser->gpio_aux_switch && dp->aux_switch_node) {
-		rc = dp_display_init_aux_switch(dp);
-		if (rc)
-			return rc;
-
+	    && !dp->parser->gpio_aux_switch) {
 		rc = dp->aux->aux_switch(dp->aux, true, dp->hpd->orientation);
 		if (rc)
 			return rc;
@@ -1920,7 +1866,6 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 {
 	int rc = 0;
 	bool hdcp_disabled;
-	const char *phandle = "qcom,dp-aux-switch";
 	struct device *dev = &dp->pdev->dev;
 	struct dp_hpd_cb *cb = &dp->hpd_cb;
 	struct dp_ctrl_in ctrl_in = {
@@ -1962,10 +1907,6 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 		dp->catalog = NULL;
 		goto error_catalog;
 	}
-
-	dp->aux_switch_node = of_parse_phandle(dp->pdev->dev.of_node, phandle, 0);
-	if (!dp->aux_switch_node)
-		DP_DEBUG("cannot parse %s handle\n", phandle);
 
 	dp->aux = dp_aux_get(dev, &dp->catalog->aux, dp->parser,
 			dp->aux_switch_node);

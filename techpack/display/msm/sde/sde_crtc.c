@@ -44,16 +44,9 @@
 #include "sde_vm.h"
 #ifdef OPLUS_BUG_STABILITY
 #include "oplus_display_private_api.h"
-#include "oplus_onscreenfingerprint.h"
 #include "oplus_dc_diming.h"
 
-extern int oplus_dimlayer_fingerprint_failcount;
-extern int oplus_underbrightness_alpha;
 extern int oplus_dfps_idle_off;
-#ifdef OPLUS_FEATURE_AOD_RAMLESS
-extern int oplus_display_atomic_check(struct drm_crtc *crtc, struct drm_crtc_state *state);
-#endif /*OPLUS_FEATURE_AOD_RAMLESS*/
-
 #endif
 
 #define SDE_PSTATES_MAX (SDE_STAGE_MAX * 4)
@@ -237,47 +230,6 @@ static int _sde_debugfs_fps_status(struct inode *inode, struct file *file)
 			inode->i_private);
 }
 #endif
-
-static ssize_t early_wakeup_store(struct device *device,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct drm_crtc *crtc;
-	struct sde_crtc *sde_crtc;
-	struct msm_drm_private *priv;
-	u32 crtc_id;
-	bool trigger;
-
-	if (!device || !buf || !count) {
-		SDE_ERROR("invalid input param(s)\n");
-		return -EINVAL;
-	}
-
-	if (kstrtobool(buf, &trigger) < 0)
-		return -EINVAL;
-
-	if (!trigger)
-		return count;
-
-	crtc = dev_get_drvdata(device);
-	if (!crtc || !crtc->dev || !crtc->dev->dev_private) {
-		SDE_ERROR("invalid crtc\n");
-		return -EINVAL;
-	}
-
-	sde_crtc = to_sde_crtc(crtc);
-	priv = crtc->dev->dev_private;
-
-	crtc_id = drm_crtc_index(crtc);
-	if (crtc_id >= ARRAY_SIZE(priv->disp_thread)) {
-		SDE_ERROR("invalid crtc index[%d]\n", crtc_id);
-		return -EINVAL;
-	}
-
-	kthread_queue_work(&priv->disp_thread[crtc_id].worker,
-			&sde_crtc->early_wakeup_work);
-
-	return count;
-}
 
 static ssize_t fps_periodicity_ms_store(struct device *device,
 		struct device_attribute *attr, const char *buf, size_t count)
@@ -465,14 +417,12 @@ static DEVICE_ATTR_RO(vsync_event);
 static DEVICE_ATTR_RO(measured_fps);
 static DEVICE_ATTR_RW(fps_periodicity_ms);
 static DEVICE_ATTR_RO(retire_frame_event);
-static DEVICE_ATTR_WO(early_wakeup);
 
 static struct attribute *sde_crtc_dev_attrs[] = {
 	&dev_attr_vsync_event.attr,
 	&dev_attr_measured_fps.attr,
 	&dev_attr_fps_periodicity_ms.attr,
 	&dev_attr_retire_frame_event.attr,
-	&dev_attr_early_wakeup.attr,
 	NULL
 };
 
@@ -1629,37 +1579,6 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 				_sde_crtc_setup_dim_layer_cfg(crtc, sde_crtc,
 						mixer, &cstate->dim_layer[i]);
 			//clear_bit(SDE_CRTC_DIRTY_DIM_LAYERS, cstate->dirty);
-#ifdef OPLUS_BUG_STABILITY
-		if (cstate->fingerprint_dim_layer) {
-			bool is_dim_valid = true;
-			uint32_t zpos_max = 0;
-
-			drm_atomic_crtc_for_each_plane(plane, crtc) {
-				state = plane->state;
-				if (!state)
-					continue;
-				pstate = to_sde_plane_state(state);
-
-				if (zpos_max < pstate->stage)
-					zpos_max = pstate->stage;
-				SDE_EVT32(pstate->stage, cstate->fingerprint_dim_layer->stage, zpos_max);
-				if (pstate->stage == cstate->fingerprint_dim_layer->stage) {
-					is_dim_valid = false;
-					oplus_dimlayer_fingerprint_failcount++;
-					SDE_ERROR("Skip fingerprint_dim_layer as it shared plane stage %d %d\n",
-							pstate->stage, cstate->fingerprint_dim_layer->stage);
-					SDE_EVT32(pstate->stage, cstate->fingerprint_dim_layer->stage, zpos_max, oplus_dimlayer_fingerprint_failcount);
-				}
-			}
-			if (is_dim_valid) {
-				SDE_ATRACE_BEGIN("_sde_crtc_setup_dim_layer_cfg");
-				_sde_crtc_setup_dim_layer_cfg(crtc, sde_crtc,
-						mixer, cstate->fingerprint_dim_layer);
-				SDE_ATRACE_END("_sde_crtc_setup_dim_layer_cfg");
-			}
-			}
-		}
-#endif
 	}
 
 end:
@@ -2661,47 +2580,6 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 	SDE_EVT32_VERBOSE(DRMID(crtc));
 
 	sde_core_perf_crtc_update(crtc, 0, false);
-
-#ifdef OPLUS_BUG_STABILITY
-	{
-		struct sde_crtc_state *old_cstate;
-		struct sde_crtc_state *cstate;
-		struct dsi_display *display = get_main_display();
-
-		if (!display || !display->panel) {
-			SDE_ERROR("failed to find display");
-			return;
-		}
-
-		if (!old_state) {
-			SDE_ERROR("failed to find old cstate");
-			return;
-		}
-		old_cstate = to_sde_crtc_state(old_state);
-		cstate = to_sde_crtc_state(crtc->state);
-
-		if (old_cstate->fingerprint_pressed != cstate->fingerprint_pressed) {
-			if (cstate->fingerprint_pressed) {
-				press_event_notify_init();
-				if (display->panel->power_mode == SDE_MODE_DPMS_ON) {
-					if (display->panel->oplus_priv.is_aod_ramless)
-						press_event_notify(20);
-					else
-						press_event_notify(1);
-				} else {
-					if (display->panel->oplus_priv.is_aod_ramless)
-						press_event_notify(48);
-					else
-						press_event_notify(32);
-				}
-				return;
-			}
-			pr_err("fingerprint1 status: up");
-			oplus_notify_fingerprint_press_event(false);
-
-		}
-	}
-#endif /* OPLUS_BUG_STABILITY */
 }
 
 /**
@@ -4827,230 +4705,6 @@ static int _sde_crtc_check_secure_state(struct drm_crtc *crtc,
 	return 0;
 }
 
-#ifdef OPLUS_BUG_STABILITY
-extern int oplus_onscreenfp_status;
-extern int lcd_closebl_flag_fp;
-extern int oplus_dimlayer_hbm;
-extern int oplus_dimlayer_bl_alpha_value;
-extern int oplus_dimlayer_bl_enable;
-extern bool oplus_ffl_trigger_finish;
-extern int oplus_dimlayer_bl;
-extern ktime_t oplus_backlight_time;
-extern u32 oplus_backlight_delta;
-extern int oplus_aod_mode;
-int oplus_dimlayer_hbm_count = 0;
-extern int oplus_request_power_status;
-extern int skip_backlight;
-int fppress = 0;
-
-static int sde_crtc_onscreenfinger_atomic_check(struct sde_crtc_state *cstate,
-		struct plane_state *pstates, int cnt)
-{
-	int fp_index = -1;
-	int fppressed_index = -1;
-	int aod_index = -1;
-	int zpos = INT_MAX;
-	int mode;
-	int fp_mode = oplus_onscreenfp_status;
-	int dimlayer_hbm = oplus_dimlayer_hbm;
-	int dimlayer_bl = 0;
-	int i;
-	struct dsi_display *display = get_main_display();
-	bool dimlayer_is_top = false;
-	int panel_power_mode;
-
-	for (i = 0; i < cnt; i++) {
-		mode = sde_plane_check_fingerprint_layer(pstates[i].drm_pstate);
-		if (mode == 1)
-			fp_index = i;
-		if (mode == 2)
-			fppressed_index = i;
-		if (mode == 3)
-			aod_index = i;
-		if (pstates[i].sde_pstate)
-			pstates[i].sde_pstate->is_skip = false;
-	}
-
-	if (!is_dsi_panel(cstate->base.crtc))
-		return 0;
-
-	if (!display || !display->panel) {
-		SDE_ERROR("failed to find display\n");
-		return 0;
-	}
-
-	if (oplus_dimlayer_bl_enable) {
-		int backlight = oplus_get_panel_brightness();
-
-		if (backlight > 1 && backlight < oplus_dimlayer_bl_alpha_value &&
-		    oplus_ffl_trigger_finish == true && !dimlayer_hbm) {
-			ktime_t now = ktime_get();
-			ktime_t delta = ktime_sub(now, oplus_backlight_time);
-
-			if (oplus_backlight_delta > 9) {
-				if (oplus_dimlayer_bl == 0 && ktime_to_ns(delta) > 25000000)
-					oplus_dimlayer_bl = 1;
-			} else {
-				oplus_dimlayer_bl = 1;
-			}
-			if (oplus_dimlayer_bl)
-				dimlayer_bl = 1;
-		} else {
-			oplus_dimlayer_bl = 0;
-		}
-	} else {
-		oplus_dimlayer_bl = 0;
-	}
-
-	if (fppressed_index >= 0) {
-		if (fp_mode == 0) {
-			pstates[fppressed_index].sde_pstate->is_skip = true;
-			fppressed_index = -1;
-		}
-	}
-	SDE_ATRACE_INT("fppressed_index", fppressed_index >= 0 ? 1000 : 500);
-	SDE_EVT32(cstate->fingerprint_dim_layer);
-	cstate->fingerprint_dim_layer = NULL;
-	cstate->fingerprint_mode = false;
-	cstate->fingerprint_pressed = false;
-
-	if (dimlayer_hbm || dimlayer_bl) {
-		if (fp_index >= 0 && fppressed_index >= 0) {
-			if (pstates[fp_index].stage >= pstates[fppressed_index].stage) {
-				SDE_ERROR("Bug!!: fp layer top of fppressed layer\n");
-				return -EINVAL;
-			}
-		}
-
-		if (lcd_closebl_flag_fp) {
-			oplus_underbrightness_alpha = 0;
-			cstate->fingerprint_dim_layer = NULL;
-			cstate->fingerprint_mode = false;
-			return 0;
-		}
-
-		if (dimlayer_hbm && (oplus_get_panel_brightness() != 0))
-			cstate->fingerprint_mode = true;
-		else
-			cstate->fingerprint_mode = false;
-
-		SDE_ATRACE_INT("fingerprint_mode", cstate->fingerprint_mode == true ? 1000 : 500);
-		SDE_DEBUG("debug for get cstate->fingerprint_mode = %d\n", cstate->fingerprint_mode);
-
-		if (is_nonsupport_ramless(display->panel->oplus_priv.vendor_name)) {
-			panel_power_mode = oplus_get_panel_power_mode();
-			/* when aod layer is present */
-			if (aod_index >= 0) {
-				/* set dimlayer alpha transparent, appear AOD layer by force */
-				if (((fp_index >= 0) || (fppressed_index < 0)) &&
-					((panel_power_mode == SDE_MODE_DPMS_LP1) || (panel_power_mode == SDE_MODE_DPMS_LP2))) {
-					oplus_set_aod_dim_alpha(CUST_A_TRANS);
-				}
-				/*
-				* set dimlayer alpha opaque, disappear AOD layer by force when pressed down
-				* and SDE_MODE_DPMS_LP1/SDE_MODE_DPMS_LP2
-				*/
-				if (((fp_mode == 1) && (panel_power_mode != SDE_MODE_DPMS_ON)) || (oplus_request_power_status == 2)) {
-					oplus_set_aod_dim_alpha(CUST_A_OPAQUE);
-				}
-			} else { /* when screen on, restore dimlayer alpha */
-				if (oplus_get_panel_brightness() != 0)
-					oplus_set_aod_dim_alpha(CUST_A_NO);
-			}
-		}
-
-		if (((get_oplus_display_scene() == OPLUS_DISPLAY_AOD_SCENE) || \
-			(get_oplus_display_scene() == OPLUS_DISPLAY_AOD_HBM_SCENE)) && \
-			(fp_index > 0) && oplus_aod_mode && display->panel->oplus_priv.is_aod_ramless){
-				cstate->fingerprint_dim_layer = NULL;
-		} else {
-			if (!is_nonsupport_ramless(display->panel->oplus_priv.vendor_name)) {
-				if (aod_index >= 0) {
-					if (zpos > pstates[aod_index].stage)
-						zpos = pstates[aod_index].stage;
-					pstates[aod_index].stage++;
-				}
-			}
-			if (fppressed_index >= 0) {
-				if (zpos > pstates[fppressed_index].stage)
-					zpos = pstates[fppressed_index].stage;
-				pstates[fppressed_index].stage++;
-			}
-			if (fp_index >= 0) {
-				if (zpos > pstates[fp_index].stage)
-					zpos = pstates[fp_index].stage;
-				pstates[fp_index].stage++;
-			}
-
-			for (i = 0; i < cnt; i++) {
-				if (i == fp_index || i == fppressed_index ||
-					i == aod_index)
-					continue;
-				if (pstates[i].stage >= zpos) {
-					pstates[i].stage++;
-				}
-			}
-
-			if (zpos == INT_MAX) {
-				zpos = 0;
-				dimlayer_is_top = true;
-				for (i = 0; i < cnt; i++) {
-					if (pstates[i].stage > zpos)
-						zpos = pstates[i].stage;
-				}
-				zpos++;
-			}
-
-			SDE_EVT32(zpos, fp_index, aod_index, fppressed_index, cstate->num_dim_layers);
-			if (sde_crtc_config_fingerprint_dim_layer(&cstate->base, zpos)) {
-				//SDE_ERROR("Failed to config dim layer\n");
-				if (dimlayer_is_top && !cstate->fingerprint_dim_layer &&
-					#ifdef OPLUS_BUG_STABILITY
-					/* liuzhizun, 2020/07/27, modify for power on hbm*/
-					 !oplus_aod_mode &&(oplus_dimlayer_hbm_count < 0) && display->panel->oplus_priv.is_aod_ramless) {
-					#endif
-					oplus_underbrightness_alpha = 0;
-					cstate->fingerprint_dim_layer = NULL;
-					cstate->fingerprint_mode = false;
-					cstate->fingerprint_pressed = false;
-					oplus_dimlayer_hbm_count++;
-					return 0;
-				}
-
-				SDE_EVT32(zpos, fp_index, aod_index, fppressed_index, cstate->num_dim_layers);
-				return -EINVAL;
-			}
-		}
-#ifdef OPLUS_FEATURE_AOD_RAMLESS
-		if (fppressed_index >= 0 && !(display->panel->oplus_priv.is_aod_ramless && cstate->base.mode.flags & DRM_MODE_FLAG_CMD_MODE_PANEL)) {
-			fppress = 1;
-			skip_backlight = -1;
-		} else {
-			fppress = 0;
-		}
-#endif
-		if (fppressed_index >= 0 && !(display->panel->oplus_priv.is_aod_ramless && cstate->base.mode.flags & DRM_MODE_FLAG_CMD_MODE_PANEL))
-			cstate->fingerprint_pressed = true;
-		else
-			cstate->fingerprint_pressed = false;
-
-		SDE_ATRACE_INT("fingerprint_pressed", cstate->fingerprint_pressed == true ? 1000 : 500);
-		SDE_DEBUG("debug for get cstate->fingerprint_pressed = %d\n", cstate->fingerprint_pressed);
-	} else {
-		if (is_nonsupport_ramless(display->panel->oplus_priv.vendor_name)) {
-			oplus_set_aod_dim_alpha(CUST_A_NO);
-		}
-		oplus_underbrightness_alpha = 0;
-		cstate->fingerprint_dim_layer = NULL;
-		cstate->fingerprint_mode = false;
-		cstate->fingerprint_pressed = false;
-	}
-	SDE_EVT32(cstate->fingerprint_dim_layer);
-
-	return 0;
-}
-#endif /* OPLUS_BUG_STABILITY */
-
 static int _sde_crtc_check_get_pstates(struct drm_crtc *crtc,
 		struct drm_crtc_state *state,
 		struct drm_display_mode *mode,
@@ -5281,16 +4935,6 @@ static int _sde_crtc_atomic_check_pstates(struct drm_crtc *crtc,
 	if (rc)
 		return rc;
 
-#ifdef OPLUS_BUG_STABILITY
-#ifdef OPLUS_FEATURE_AOD_RAMLESS
-	rc = oplus_display_atomic_check(crtc, state);
-	if (rc)
-		return rc;
-#endif /*OPLUS_FEATURE_AOD_RAMLESS*/
-	rc = sde_crtc_onscreenfinger_atomic_check(cstate, pstates, cnt);
-	if (rc)
-		return rc;
-#endif
 	/* assign mixer stages based on sorted zpos property */
 	rc = _sde_crtc_check_zpos(state, sde_crtc, pstates, cstate, mode, cnt);
 	if (rc)
@@ -7013,40 +6657,6 @@ static void __sde_crtc_idle_notify_work(struct kthread_work *work)
 	}
 }
 
-/*
- * __sde_crtc_early_wakeup_work - trigger early wakeup from user space
- */
-static void __sde_crtc_early_wakeup_work(struct kthread_work *work)
-{
-	struct sde_crtc *sde_crtc = container_of(work, struct sde_crtc,
-				early_wakeup_work);
-	struct drm_crtc *crtc;
-	struct drm_device *dev;
-	struct msm_drm_private *priv;
-	struct sde_kms *sde_kms;
-
-	if (!sde_crtc) {
-		SDE_ERROR("invalid sde crtc\n");
-		return;
-	}
-
-	if (!sde_crtc->enabled) {
-		SDE_INFO("sde crtc is not enabled\n");
-		return;
-	}
-
-	crtc = &sde_crtc->base;
-	dev = crtc->dev;
-	if (!dev) {
-		SDE_ERROR("invalid drm device\n");
-		return;
-	}
-
-	priv = dev->dev_private;
-	sde_kms = to_sde_kms(priv->kms);
-	sde_kms_trigger_early_wakeup(sde_kms, crtc);
-}
-
 /* initialize crtc */
 struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 {
@@ -7145,8 +6755,6 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 					__sde_crtc_idle_notify_work);
 	kthread_init_delayed_work(&sde_crtc->static_cache_read_work,
 			__sde_crtc_static_cache_read_work);
-	kthread_init_work(&sde_crtc->early_wakeup_work,
-					__sde_crtc_early_wakeup_work);
 
 	SDE_DEBUG("crtc=%d new_llcc=%d, old_llcc=%d\n",
 		crtc->base.id,

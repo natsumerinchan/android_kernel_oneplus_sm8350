@@ -64,15 +64,10 @@
 #include "sde_trace.h"
 #ifdef OPLUS_BUG_STABILITY
 #include "oplus_display_private_api.h"
-#include "oplus_onscreenfingerprint.h"
 #endif
 
 #ifdef OPLUS_BUG_STABILITY
 #include "oplus_dc_diming.h"
-#endif
-
-#if IS_ENABLED(CONFIG_OPLUS_FEATURE_THEIA)
-#include <soc/oplus/system/theia_send_event.h> /* for theia_send_event etc */
 #endif
 
 /* defines for secure channel call */
@@ -980,7 +975,7 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 			old_mode = DRM_PANEL_BLANK_POWERDOWN;
 		}
 
-		if (old_mode != new_mode) {
+		if ((old_mode != new_mode) || (old_fps != new_fps)) {
 			struct drm_panel_notifier notifier_data;
 
 			SDE_EVT32(old_mode, new_mode, old_fps, new_fps,
@@ -1162,14 +1157,6 @@ static void sde_kms_prepare_commit(struct msm_kms *kms,
 	rc = pm_runtime_get_sync(sde_kms->dev->dev);
 	if (rc < 0) {
 		SDE_ERROR("failed to enable power resources %d\n", rc);
-		#ifdef OPLUS_BUG_STABILITY
-		#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-		SDE_MM_ERROR("DisplayDriverID@@415$$failed to enable power resources %d\n", rc);
-		#endif /*CONFIG_OPLUS_FEATURE_MM_FEEDBACK*/
-		#endif /* OPLUS_BUG_STABILITY */
-#if IS_ENABLED(CONFIG_OPLUS_FEATURE_THEIA)
-		theia_send_event(THEIA_EVENT_HARDWARE_ERROR, THEIA_LOGINFO_KERNEL_LOG, current->pid, "failed to enable power resources");
-#endif
 		SDE_EVT32(rc, SDE_EVTLOG_ERROR);
 		goto end;
 	}
@@ -2492,7 +2479,6 @@ static int sde_kms_set_crtc_for_conn(struct drm_device *dev,
 	}
 
 	crtc_state->active = true;
-	crtc_state->enable = true;
 	ret = drm_atomic_set_crtc_for_connector(conn_state, enc->crtc);
 	if (ret)
 		SDE_ERROR("error %d setting the crtc\n", ret);
@@ -3675,7 +3661,7 @@ static int sde_kms_get_dsc_count(const struct msm_kms *kms,
 	return 0;
 }
 
-static int _sde_kms_null_commit(struct drm_device *dev,
+static void _sde_kms_null_commit(struct drm_device *dev,
 		struct drm_encoder *enc)
 {
 	struct drm_modeset_acquire_ctx ctx;
@@ -3718,8 +3704,6 @@ end:
 
 	drm_modeset_drop_locks(&ctx);
 	drm_modeset_acquire_fini(&ctx);
-
-	return ret;
 }
 
 
@@ -3747,36 +3731,6 @@ void sde_kms_display_early_wakeup(struct drm_device *dev,
 	}
 
 	drm_connector_list_iter_end(&conn_iter);
-}
-static int sde_kms_trigger_null_flush(struct msm_kms *kms)
-{
-	struct sde_kms *sde_kms;
-	struct sde_splash_display *splash_display;
-	int i, rc = 0;
-
-	if (!kms) {
-		SDE_ERROR("invalid kms\n");
-		return -EINVAL;
-	}
-
-	sde_kms = to_sde_kms(kms);
-
-	if (!sde_kms->splash_data.num_splash_displays ||
-		sde_kms->dsi_display_count == sde_kms->splash_data.num_splash_displays)
-		return rc;
-
-	for (i = 0; i < MAX_DSI_DISPLAYS; i++) {
-		splash_display = &sde_kms->splash_data.splash_display[i];
-
-		if (splash_display->cont_splash_enabled && splash_display->encoder) {
-			SDE_DEBUG("triggering null commit on enc:%d\n",
-					DRMID(splash_display->encoder));
-			SDE_EVT32(DRMID(splash_display->encoder), SDE_EVTLOG_FUNC_ENTRY);
-			rc = _sde_kms_null_commit(sde_kms->dev, splash_display->encoder);
-		}
-	}
-
-	return rc;
 }
 
 #ifdef CONFIG_DEEPSLEEP
@@ -4125,7 +4079,6 @@ static const struct msm_kms_funcs kms_funcs = {
 	.get_address_space_device = _sde_kms_get_address_space_device,
 	.postopen = _sde_kms_post_open,
 	.check_for_splash = sde_kms_check_for_splash,
-	.trigger_null_flush = sde_kms_trigger_null_flush,
 	.get_mixer_count = sde_kms_get_mixer_count,
 	.get_dsc_count = sde_kms_get_dsc_count,
 };
@@ -4264,6 +4217,102 @@ static int _sde_kms_active_override(struct sde_kms *sde_kms, bool enable)
 
 	return 0;
 }
+
+static void _sde_kms_update_pm_qos_irq_request(struct sde_kms *sde_kms)
+{
+	struct device *cpu_dev;
+	int cpu = 0;
+	u32 cpu_irq_latency = sde_kms->catalog->perf.cpu_irq_latency;
+
+	if (cpumask_empty(&sde_kms->irq_cpu_mask)) {
+		SDE_DEBUG("%s: irq_cpu_mask is empty\n", __func__);
+		return;
+	}
+
+	for_each_cpu(cpu, &sde_kms->irq_cpu_mask) {
+		cpu_dev = get_cpu_device(cpu);
+		if (!cpu_dev) {
+			SDE_DEBUG("%s: failed to get cpu%d device\n", __func__,
+				cpu);
+			continue;
+		}
+
+		if (dev_pm_qos_request_active(&sde_kms->pm_qos_irq_req[cpu]))
+			dev_pm_qos_update_request(&sde_kms->pm_qos_irq_req[cpu],
+					cpu_irq_latency);
+		else
+			dev_pm_qos_add_request(cpu_dev,
+				&sde_kms->pm_qos_irq_req[cpu],
+				DEV_PM_QOS_RESUME_LATENCY,
+				cpu_irq_latency);
+	}
+}
+
+static void _sde_kms_remove_pm_qos_irq_request(struct sde_kms *sde_kms)
+{
+	struct device *cpu_dev;
+	int cpu = 0;
+
+	if (cpumask_empty(&sde_kms->irq_cpu_mask)) {
+		SDE_DEBUG("%s: irq_cpu_mask is empty\n", __func__);
+		return;
+	}
+
+	for_each_cpu(cpu, &sde_kms->irq_cpu_mask) {
+		cpu_dev = get_cpu_device(cpu);
+		if (!cpu_dev) {
+			SDE_DEBUG("%s: failed to get cpu%d device\n", __func__,
+				cpu);
+			continue;
+		}
+
+		if (dev_pm_qos_request_active(&sde_kms->pm_qos_irq_req[cpu]))
+			dev_pm_qos_remove_request(
+					&sde_kms->pm_qos_irq_req[cpu]);
+	}
+}
+
+void sde_kms_cpu_vote_for_irq(struct sde_kms *sde_kms, bool enable)
+{
+	struct msm_drm_private *priv = sde_kms->dev->dev_private;
+
+	mutex_lock(&priv->phandle.phandle_lock);
+
+	if (enable && atomic_inc_return(&sde_kms->irq_vote_count) == 1)
+		_sde_kms_update_pm_qos_irq_request(sde_kms);
+	else if (!enable && atomic_dec_return(&sde_kms->irq_vote_count) == 0)
+		_sde_kms_remove_pm_qos_irq_request(sde_kms);
+
+	mutex_unlock(&priv->phandle.phandle_lock);
+}
+
+static void sde_kms_irq_affinity_notify(
+		struct irq_affinity_notify *affinity_notify,
+		const cpumask_t *mask)
+{
+	struct msm_drm_private *priv;
+	struct sde_kms *sde_kms = container_of(affinity_notify,
+					struct sde_kms, affinity_notify);
+
+	if (!sde_kms || !sde_kms->dev || !sde_kms->dev->dev_private)
+		return;
+
+	priv = sde_kms->dev->dev_private;
+
+	mutex_lock(&priv->phandle.phandle_lock);
+
+	_sde_kms_remove_pm_qos_irq_request(sde_kms);
+	// save irq cpu mask
+	sde_kms->irq_cpu_mask = *mask;
+
+	// request vote with updated irq cpu mask
+	if (atomic_read(&sde_kms->irq_vote_count))
+		_sde_kms_update_pm_qos_irq_request(sde_kms);
+
+	mutex_unlock(&priv->phandle.phandle_lock);
+}
+
+static void sde_kms_irq_affinity_release(struct kref *ref) {}
 
 static void sde_kms_handle_power_event(u32 event_type, void *usr)
 {
@@ -4740,7 +4789,7 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	struct drm_device *dev;
 	struct msm_drm_private *priv;
 	struct platform_device *platformdev;
-	int rc = -EINVAL;
+	int irq_num, rc = -EINVAL;
 
 	if (!kms) {
 		SDE_ERROR("invalid kms\n");
@@ -4782,11 +4831,19 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 
 	atomic_set(&sde_kms->detach_sec_cb, 0);
 	atomic_set(&sde_kms->detach_all_cb, 0);
+	atomic_set(&sde_kms->irq_vote_count, 0);
 
 	/*
 	 * Support format modifiers for compression etc.
 	 */
 	dev->mode_config.allow_fb_modifiers = true;
+
+	sde_kms->affinity_notify.notify = sde_kms_irq_affinity_notify;
+	sde_kms->affinity_notify.release = sde_kms_irq_affinity_release;
+
+	irq_num = platform_get_irq(to_platform_device(sde_kms->dev->dev), 0);
+	SDE_DEBUG("Registering for notification of irq_num: %d\n", irq_num);
+	irq_set_affinity_notifier(irq_num, &sde_kms->affinity_notify);
 
 	if (sde_in_trusted_vm(sde_kms)) {
 		rc = sde_vm_trusted_init(sde_kms);
@@ -4959,27 +5016,4 @@ int sde_kms_handle_recovery(struct drm_encoder *encoder)
 {
 	SDE_EVT32(DRMID(encoder), MSM_ENC_ACTIVE_REGION);
 	return sde_encoder_wait_for_event(encoder, MSM_ENC_ACTIVE_REGION);
-}
-
-void sde_kms_trigger_early_wakeup(struct sde_kms *sde_kms,
-		struct drm_crtc *crtc)
-{
-	struct msm_drm_private *priv;
-	struct drm_encoder *drm_enc;
-
-	if (!sde_kms || !crtc) {
-		SDE_ERROR("invalid argument sde_kms %pK crtc %pK\n",
-			sde_kms, crtc);
-		return;
-	}
-
-	priv = sde_kms->dev->dev_private;
-
-	SDE_ATRACE_BEGIN("sde_kms_trigger_early_wakeup");
-	drm_for_each_encoder_mask(drm_enc, crtc->dev, crtc->state->encoder_mask)
-		sde_encoder_trigger_early_wakeup(drm_enc);
-
-	if (sde_kms->first_kickoff)
-		sde_power_scale_reg_bus(&priv->phandle, VOTE_INDEX_HIGH, false);
-	SDE_ATRACE_END("sde_kms_trigger_early_wakeup");
 }

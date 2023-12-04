@@ -21,6 +21,7 @@
 
 #include <linux/msm_ion.h>
 #include <linux/pm_domain.h>
+#include <linux/pm_qos.h>
 
 #include "msm_drv.h"
 #include "msm_kms.h"
@@ -46,21 +47,39 @@
  * SDE_DEBUG - macro for kms/plane/crtc/encoder/connector logs
  * @fmt: Pointer to format string
  */
-#define SDE_DEBUG(fmt, ...) pr_debug(fmt, ##__VA_ARGS__)
+#define SDE_DEBUG(fmt, ...)                                                \
+	do {                                                               \
+		if (unlikely(drm_debug & DRM_UT_KMS))                      \
+			DRM_DEBUG(fmt, ##__VA_ARGS__); \
+		else                                                       \
+			pr_debug(fmt, ##__VA_ARGS__);                      \
+	} while (0)
 
 /**
  * SDE_INFO - macro for kms/plane/crtc/encoder/connector logs
  * @fmt: Pointer to format string
  */
-#define SDE_INFO(fmt, ...) pr_debug(fmt, ##__VA_ARGS__)
+#define SDE_INFO(fmt, ...)                                                \
+	do {                                                               \
+		if (unlikely(drm_debug & DRM_UT_KMS))                      \
+			DRM_INFO(fmt, ##__VA_ARGS__); \
+		else                                                       \
+			pr_info(fmt, ##__VA_ARGS__);                      \
+	} while (0)
 
 /**
  * SDE_DEBUG_DRIVER - macro for hardware driver logging
  * @fmt: Pointer to format string
  */
-#define SDE_DEBUG_DRIVER(fmt, ...) pr_debug(fmt, ##__VA_ARGS__)
+#define SDE_DEBUG_DRIVER(fmt, ...)                                         \
+	do {                                                               \
+		if (unlikely(drm_debug & DRM_UT_DRIVER))                   \
+			DRM_ERROR(fmt, ##__VA_ARGS__); \
+		else                                                       \
+			pr_debug(fmt, ##__VA_ARGS__);                      \
+	} while (0)
 
-#define SDE_ERROR(fmt, ...) pr_debug("[sde error]" fmt, ##__VA_ARGS__)
+#define SDE_ERROR(fmt, ...) pr_err("[sde error]" fmt, ##__VA_ARGS__)
 
 #define POPULATE_RECT(rect, a, b, c, d, Q16_flag) \
 	do {						\
@@ -72,17 +91,6 @@
 
 #define CHECK_LAYER_BOUNDS(offset, size, max_size) \
 	(((size) > (max_size)) || ((offset) > ((max_size) - (size))))
-
-#ifdef OPLUS_BUG_STABILITY
-#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-#include <soc/oplus/system/oplus_mm_kevent_fb.h>
-#define SDE_MM_ERROR(fmt, ...) \
-		do { \
-			pr_err("[sde error]" fmt, ##__VA_ARGS__); \
-			mm_fb_display_kevent_named(MM_FB_KEY_RATELIMIT_1H, fmt, ##__VA_ARGS__); \
-		} while(0)
-#endif /*CONFIG_OPLUS_FEATURE_MM_FEEDBACK*/
-#endif /* OPLUS_BUG_STABILITY */
 
 /**
  * ktime_compare_safe - compare two ktime structures
@@ -297,6 +305,11 @@ struct sde_kms {
 	bool first_kickoff;
 	bool qdss_enabled;
 	bool pm_suspend_clk_dump;
+
+	cpumask_t irq_cpu_mask;
+	atomic_t irq_vote_count;
+	struct dev_pm_qos_request pm_qos_irq_req[NR_CPUS];
+	struct irq_affinity_notify affinity_notify;
 
 	struct sde_vm *vm;
 };
@@ -673,6 +686,14 @@ void sde_kms_timeline_status(struct drm_device *dev);
 int sde_kms_handle_recovery(struct drm_encoder *encoder);
 
 /**
+ * sde_kms_cpu_vote_for_irq() - API to keep pm_qos latency vote on cpu
+ * where mdss_irq is scheduled
+ * @sde_kms: pointer to sde_kms structure
+ * @enable: true if enable request, false otherwise.
+ */
+void sde_kms_cpu_vote_for_irq(struct sde_kms *sde_kms, bool enable);
+
+/**
  * sde_kms_get_io_resources() - reads associated register range
  * @kms: pointer to sde_kms structure
  * @io_res: pointer to msm_io_res struct to populate the ranges
@@ -733,13 +754,4 @@ int sde_kms_vm_trusted_prepare_commit(struct sde_kms *sde_kms,
  */
 int sde_kms_vm_primary_prepare_commit(struct sde_kms *sde_kms,
 					   struct drm_atomic_state *state);
-
-/**
- * sde_kms_trigger_early_wakeup - trigger early wake up
- * @sde_kms: pointer to sde_kms structure
- * @crtc: pointer to drm_crtc structure
- */
-void sde_kms_trigger_early_wakeup(struct sde_kms *sde_kms,
-		struct drm_crtc *crtc);
-
 #endif /* __sde_kms_H__ */

@@ -21,7 +21,6 @@
 #include "sde_hw_color_proc_common_v4.h"
 #ifdef OPLUS_BUG_STABILITY
 #include "oplus_display_private_api.h"
-#include "oplus_onscreenfingerprint.h"
 #endif
 
 struct sde_cp_node {
@@ -1558,11 +1557,6 @@ static int sde_cp_crtc_checkfeature(struct sde_cp_node *prop_node,
 	return ret;
 }
 
-#ifdef OPLUS_BUG_STABILITY
-extern struct drm_msm_pcc oplus_save_pcc;
-extern bool oplus_pcc_enabled;
-extern bool oplus_skip_pcc;
-#endif
 static void sde_cp_crtc_setfeature(struct sde_cp_node *prop_node,
 				   struct sde_crtc *sde_crtc)
 {
@@ -1576,25 +1570,6 @@ static void sde_cp_crtc_setfeature(struct sde_cp_node *prop_node,
 
 	memset(&hw_cfg, 0, sizeof(hw_cfg));
 	sde_cp_get_hw_payload(prop_node, &hw_cfg, &feature_enabled);
-
-#ifdef OPLUS_BUG_STABILITY
-	if (prop_node->feature == SDE_CP_CRTC_DSPP_PCC && is_dsi_panel(&sde_crtc->base)) {
-		if (hw_cfg.payload && (hw_cfg.len == sizeof(oplus_save_pcc))) {
-			memcpy(&oplus_save_pcc, hw_cfg.payload, hw_cfg.len);
-			oplus_pcc_enabled = true;
-
-			if (is_skip_pcc(&sde_crtc->base)) {
-				hw_cfg.payload = NULL;
-				hw_cfg.len = 0;
-				oplus_skip_pcc = true;
-			} else {
-				oplus_skip_pcc = false;
-			}
-		} else {
-			oplus_pcc_enabled = false;
-		}
-	}
-#endif
 
 	hw_cfg.num_of_mixers = sde_crtc->num_mixers;
 	hw_cfg.last_feature = 0;
@@ -2045,11 +2020,6 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 	int rc = 0;
 	bool need_flush = false;
 
-	#ifdef OPLUS_BUG_STABILITY
-	bool dirty_pcc = false;
-	#endif /* OPLUS_BUG_STABILITY */
-
-
 	if (!crtc || !crtc->dev) {
 		DRM_ERROR("invalid crtc %pK dev %pK\n", crtc,
 			  (crtc ? crtc->dev : NULL));
@@ -2070,20 +2040,6 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 
 	mutex_lock(&sde_crtc->crtc_cp_lock);
 	_sde_clear_ltm_merge_mode(sde_crtc);
-
-	#ifdef OPLUS_BUG_STABILITY
-	dirty_pcc = sde_cp_crtc_update_pcc(crtc);
-	if (dirty_pcc) {
-		set_dspp_flush = true;
-	}
-	if (!dirty_pcc && list_empty(&sde_crtc->dirty_list) &&
-			list_empty(&sde_crtc->ad_dirty) &&
-			list_empty(&sde_crtc->ad_active) &&
-			list_empty(&sde_crtc->active_list)) {
-		DRM_DEBUG_DRIVER("all lists are empty\n");
-		goto exit;
-	}
-	#endif /* OPLUS_BUG_STABILITY */
 
 	rc = sde_cp_crtc_set_pu_features(crtc, &need_flush);
 	if (rc) {

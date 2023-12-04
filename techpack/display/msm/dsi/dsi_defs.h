@@ -24,23 +24,12 @@
 			(index < MAX_DSI_CTRLS_PER_DISPLAY); index++)
 
 #define DSI_WARN(fmt, ...)	DRM_WARN("[msm-dsi-warn]: "fmt, ##__VA_ARGS__)
-#define DSI_ERR(fmt, ...)	DRM_DEV_DEBUG(NULL, "[msm-dsi-error]: " fmt, \
+#define DSI_ERR(fmt, ...)	DRM_DEV_ERROR(NULL, "[msm-dsi-error]: " fmt, \
 								##__VA_ARGS__)
-#define DSI_INFO(fmt, ...)	DRM_DEV_DEBUG(NULL, "[msm-dsi-info]: "fmt, \
+#define DSI_INFO(fmt, ...)	DRM_DEV_INFO(NULL, "[msm-dsi-info]: "fmt, \
 								##__VA_ARGS__)
 #define DSI_DEBUG(fmt, ...)	DRM_DEV_DEBUG(NULL, "[msm-dsi-debug]: "fmt, \
 								##__VA_ARGS__)
-
-#ifdef OPLUS_BUG_STABILITY
-#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-#include <soc/oplus/system/oplus_mm_kevent_fb.h>
-#define DSI_MM_ERR(fmt, ...)	\
-	do { \
-			DRM_DEV_ERROR(NULL, "[msm-dsi-error]: " fmt, ##__VA_ARGS__); \
-			mm_fb_display_kevent_named(MM_FB_KEY_RATELIMIT_1H, fmt, ##__VA_ARGS__); \
-		} while(0)
-#endif /*CONFIG_OPLUS_FEATURE_MM_FEEDBACK*/
-#endif /* OPLUS_BUG_STABILITY */
 
 /**
  * enum dsi_pixel_format - DSI pixel formats
@@ -335,9 +324,6 @@ enum dsi_cmd_set_type {
 	DSI_CMD_LOADING_EFFECT_MODE1,
 	DSI_CMD_LOADING_EFFECT_MODE2,
 	DSI_CMD_LOADING_EFFECT_OFF,
-#if defined(OPLUS_FEATURE_PXLW_IRIS5)
-	DSI_CMD_SET_ABYP,
-#endif
 	DSI_CMD_SET_ILI_READ_ON,
 	DSI_CMD_SET_ILI_READ_OFF,
 #endif
@@ -696,10 +682,6 @@ struct dsi_display_mode_priv_info {
 	struct msm_ratio pclk_scale;
 	struct msm_roi_caps roi_caps;
 	bool widebus_support;
-#ifdef OPLUS_BUG_STABILITY
-	int fod_on_vblank;
-	int fod_off_vblank;
-#endif /* OPLUS_BUG_STABILITY */
 	u32 allowed_mode_switch;
 };
 
