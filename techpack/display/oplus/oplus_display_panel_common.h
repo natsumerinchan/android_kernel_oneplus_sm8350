@@ -90,7 +90,6 @@ int oplus_display_panel_get_spr(void *data);
 int oplus_display_panel_get_roundcorner(void *data);
 int oplus_display_panel_set_dynamic_osc_clock(void *data);
 int oplus_display_panel_get_dynamic_osc_clock(void *data);
-int oplus_display_get_softiris_color_status(void *data);
 int oplus_display_set_dither_status(void *buf);
 int oplus_display_get_dither_status(void *buf);
 int oplus_display_panel_get_oplus_max_brightness(void *buf);

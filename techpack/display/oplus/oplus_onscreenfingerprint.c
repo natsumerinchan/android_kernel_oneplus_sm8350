@@ -493,10 +493,6 @@ int dsi_panel_parse_oplus_config(struct dsi_panel *panel)
 	}
 #endif
 
-	panel->oplus_priv.is_pxlw_iris5 = utils->read_bool(utils->data,
-					 "oplus,is_pxlw_iris5");
-	DSI_INFO("is_pxlw_iris5: %s",
-		 panel->oplus_priv.is_pxlw_iris5 ? "true" : "false");
 /*#ifdef OPLUS_BUG_STABILITY*/
 	lcd_switch_enabled = utils->read_bool(utils->data,
 											 "oplus,lcd_switch_enabled");
