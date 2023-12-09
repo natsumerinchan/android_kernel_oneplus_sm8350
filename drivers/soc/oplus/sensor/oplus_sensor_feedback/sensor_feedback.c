@@ -76,11 +76,14 @@ struct msm_rpmh_master_data {
 #define SENSOR_DEBUG_PFMC_TYPE        "20005"
 #define SENSOR_DEBUG_MEMORY_TYPE      "20006"
 
+#define PHY_SENSOR_NUM          18
+#define VIR_SENSOR_NUM          15
 
 //extern int oplus_subsystem_sleeptime(char *name, u64 *sleeptime);
 static struct sensor_fb_cxt *g_sensor_fb_cxt = NULL;
 #define MSM_ARCH_TIMER_FREQ 19200000
 static char *subsys_names[SUBSYS_COUNTS] = {"ADSP", "CDSP", "SLPI"};
+static struct subsys_sleep_stats g_subsys_sleep_stats;
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 #endif
@@ -108,11 +111,10 @@ struct sensor_fb_conf g_fb_conf[] = {
 	{PS_FIRST_REPORT_DELAY_COUNT_ID, "device_ps_rpt_delay", SENSOR_DEBUG_DEVICE_TYPE},
 	{PS_ORIGIN_DATA_TO_ZERO_ID, "device_ps_to_zero", SENSOR_DEBUG_DEVICE_TYPE},
 	{PS_CALI_DATA_ID, "device_ps_cali_data", SENSOR_DEBUG_DEVICE_TYPE},
-	{PS_OFFSET_DATA_ID, "device_ps_offset_data", SENSOR_DEVICE_TYPE},
-	{PS_PD_DATA_ID, "device_ps_pd_data", SENSOR_DEVICE_TYPE},
-	{PS_BOOT_PD_DATA_ID, "device_ps_boot_pd_data", SENSOR_DEVICE_TYPE},
 	{PS_DYNAMIC_CALI_ID, "device_ps_dynamic_cali", SENSOR_DEBUG_DEVICE_TYPE},
 	{PS_ZERO_CALI_ID, "device_ps_zero_cali", SENSOR_DEBUG_DEVICE_TYPE},
+	{PS_ENABLE_FAIL_ID, "device_ps_enable_fail", SENSOR_DEBUG_DEVICE_TYPE},
+
 
 	{ALS_INIT_FAIL_ID, "device_als_init_fail", SENSOR_DEVICE_TYPE},
 	{ALS_I2C_ERR_ID, "device_als_i2c_err", SENSOR_DEVICE_TYPE},
@@ -122,6 +124,7 @@ struct sensor_fb_conf g_fb_conf[] = {
 	{ALS_FIRST_REPORT_DELAY_COUNT_ID, "device_als_rpt_delay", SENSOR_DEBUG_DEVICE_TYPE},
 	{ALS_ORIGIN_DATA_TO_ZERO_ID, "device_als_to_zero", SENSOR_DEBUG_DEVICE_TYPE},
 	{ALS_CALI_DATA_ID, "device_als_cali_data", SENSOR_DEBUG_DEVICE_TYPE},
+        {ALS_CG_RPT_INFO_ID, "device_als_cg_rpt_info", SENSOR_DEBUG_DEVICE_TYPE},
 
 
 	{ACCEL_INIT_FAIL_ID, "device_acc_init_fail", SENSOR_DEVICE_TYPE},
@@ -136,6 +139,7 @@ struct sensor_fb_conf g_fb_conf[] = {
 	{ACCEL_SUB_DATA_BLOCK_ID, "device_sub_acc_data_block", SENSOR_DEVICE_TYPE},
 	{ACCEL_DATA_FULL_RANGE_ID, "device_acc_data_full_range", SENSOR_DEVICE_TYPE},
 
+
 	{GYRO_INIT_FAIL_ID, "device_gyro_init_fail", SENSOR_DEVICE_TYPE},
 	{GYRO_I2C_ERR_ID, "device_gyro_i2c_err", SENSOR_DEVICE_TYPE},
 	{GYRO_ALLOC_FAIL_ID, "device_gyro_alloc_fail", SENSOR_DEVICE_TYPE},
@@ -144,6 +148,8 @@ struct sensor_fb_conf g_fb_conf[] = {
 	{GYRO_FIRST_REPORT_DELAY_COUNT_ID, "device_gyro_rpt_delay", SENSOR_DEBUG_DEVICE_TYPE},
 	{GYRO_ORIGIN_DATA_TO_ZERO_ID, "device_gyro_to_zero", SENSOR_DEBUG_DEVICE_TYPE},
 	{GYRO_CALI_DATA_ID, "device_gyro_cali_data", SENSOR_DEBUG_DEVICE_TYPE},
+	{GYRO_DATA_BLOCK_ID, "device_gyro_data_block", SENSOR_DEVICE_TYPE},
+	{GYRO_SUB_DATA_BLOCK_ID, "device_gyro_sub_data_block", SENSOR_DEVICE_TYPE},
 
 
 	{MAG_INIT_FAIL_ID, "device_mag_init_fail", SENSOR_DEVICE_TYPE},
@@ -157,6 +163,7 @@ struct sensor_fb_conf g_fb_conf[] = {
 	{MAG_DATA_BLOCK_ID, "device_mag_data_block_data", SENSOR_DEBUG_DEVICE_TYPE},
 	{MAG_DATA_FULL_RANGE_ID, "device_mag_data_full_range", SENSOR_DEBUG_DEVICE_TYPE},
 
+
 	{SAR_INIT_FAIL_ID, "device_sar_init_fail", SENSOR_DEVICE_TYPE},
 	{SAR_I2C_ERR_ID, "device_sar_i2c_err", SENSOR_DEVICE_TYPE},
 	{SAR_ALLOC_FAIL_ID, "device_sar_alloc_fail", SENSOR_DEVICE_TYPE},
@@ -165,26 +172,45 @@ struct sensor_fb_conf g_fb_conf[] = {
 	{SAR_FIRST_REPORT_DELAY_COUNT_ID, "device_sar_rpt_delay", SENSOR_DEBUG_DEVICE_TYPE},
 	{SAR_ORIGIN_DATA_TO_ZERO_ID, "device_sar_to_zero", SENSOR_DEBUG_DEVICE_TYPE},
 	{SAR_CALI_DATA_ID, "device_sar_cali_data", SENSOR_DEBUG_DEVICE_TYPE},
-	{HALL_STATUS_ID, "device_hall_status", SENSOR_DEVICE_TYPE},
-	{HALL_TRIGGER_COUNT, "hall_trigger_count", SENSOR_DEVICE_TYPE},
+
+
+	{BAROMETER_I2C_ERR_ID, "device_barometer_i2c_err", SENSOR_DEVICE_TYPE},
+
+	{HALL_I2C_ERR_ID, "device_hall_i2c_err", SENSOR_DEVICE_TYPE},
+
+	{FOLD_DEVICE_FOLDE_COUNT_ID, "device_fold_count", SENSOR_DEVICE_TYPE},
+
+	{FREE_FALL_TRIGGER_ID, "device_free_fall", SENSOR_DEVICE_TYPE},
 
 	{POWER_SENSOR_INFO_ID, "debug_power_sns_info", SENSOR_DEBUG_POWER_TYPE},
+	{POWER_WAKE_UP_RATE_ID, "debug_power_wakeup_rate", SENSOR_DEBUG_POWER_TYPE},
+	{POWER_ADSP_SLEEP_RATIO_ID, "power_adsp_sleep_ratio", SENSOR_POWER_TYPE},
+	{POWER_ADSP_SLEEP_STATS_ID, "power_adsp_sleep_stats", SENSOR_POWER_TYPE},
+
 	{POWER_ACCEL_INFO_ID, "debug_power_acc_info", SENSOR_DEBUG_POWER_TYPE},
 	{POWER_GYRO_INFO_ID, "debug_power_gyro_info", SENSOR_DEBUG_POWER_TYPE},
 	{POWER_MAG_INFO_ID, "debug_power_mag_info", SENSOR_DEBUG_POWER_TYPE},
 	{POWER_PROXIMITY_INFO_ID, "debug_power_prox_info", SENSOR_DEBUG_POWER_TYPE},
 	{POWER_LIGHT_INFO_ID, "debug_power_light_info", SENSOR_DEBUG_POWER_TYPE},
-	{POWER_WISE_LIGHT_INFO_ID, "debug_power_wiseligt_info", SENSOR_DEBUG_POWER_TYPE},
-	{POWER_WAKE_UP_RATE_ID, "debug_power_wakeup_rate", SENSOR_DEBUG_POWER_TYPE},
-	{POWER_ADSP_SLEEP_RATIO_ID, "power_adsp_sleep_ratio", SENSOR_POWER_TYPE},
+	{POWER_WISE_LIGHT_INFO_ID, "debug_power_wise_ligt_info", SENSOR_DEBUG_POWER_TYPE},
+	{POWER_AMBIENT_LIGHT_INFO_ID, "debug_power_ambient_light_info", SENSOR_DEBUG_POWER_TYPE},
+	{POWER_WISE_RGB_INFO_ID, "debug_power_wise_rgb_info", SENSOR_DEBUG_POWER_TYPE},
+	{POWER_RGB_INFO_ID, "debug_power_rgb_info", SENSOR_DEBUG_POWER_TYPE},
+	{POWER_FLICKER_INFO_ID, "debug_power_flicker_info", SENSOR_DEBUG_POWER_TYPE},
+	{POWER_AMBIENT_LIGHT_REAR_INFO_ID, "debug_power_ambient_light_rear_info", SENSOR_DEBUG_POWER_TYPE},
+	{POWER_RGB_REAR_INFO_ID, "debug_power_rgb_rear_info", SENSOR_DEBUG_POWER_TYPE},
+	{POWER_FLICKER_REAR_INFO_ID, "debug_power_flicker_rear_info", SENSOR_DEBUG_POWER_TYPE},
+	{POWER_SPECTRAL_REAR_INFO_ID, "debug_power_spectral_rear_info", SENSOR_DEBUG_POWER_TYPE},
+	{POWER_HALL_INFO_ID, "debug_power_hall_info", SENSOR_DEBUG_POWER_TYPE},
+	{POWER_PRESSURE_INFO_ID, "debug_power_pressure_info", SENSOR_DEBUG_POWER_TYPE},
+	{POWER_SAR_INFO_ID, "debug_power_sar_info", SENSOR_DEBUG_POWER_TYPE},
+	{POWER_SARS_INFO_ID, "debug_power_sars_info", SENSOR_DEBUG_POWER_TYPE},
 
 	{DOUBLE_TAP_REPORTED_ID, "device_double_tap_reported", SENSOR_DEBUG_DEVICE_TYPE},
 	{DOUBLE_TAP_PREVENTED_BY_NEAR_ID, "device_double_tap_prevented_by_near", SENSOR_DEBUG_DEVICE_TYPE},
 	{DOUBLE_TAP_PREVENTED_BY_ATTITUDE_ID, "device_double_prevented_by_attitude", SENSOR_DEBUG_DEVICE_TYPE},
 	{DOUBLE_TAP_PREVENTED_BY_FREEFALL_Z_ID, "device_double_prevented_by_freefall_z", SENSOR_DEBUG_DEVICE_TYPE},
 	{DOUBLE_TAP_PREVENTED_BY_FREEFALL_SLOPE_ID, "device_double_prevented_by_freefall_slope", SENSOR_DEBUG_DEVICE_TYPE},
-
-	{BAROMETER_I2C_ERR_ID, "device_bar_i2c_err", SENSOR_DEVICE_TYPE},
 
 	{ALAILABLE_SENSOR_LIST_ID, "available_sensor_list", SENSOR_DEBUG_DEVICE_TYPE},
 
@@ -194,6 +220,48 @@ struct sensor_fb_conf g_fb_conf[] = {
 
 };
 
+/*see physical_sensor_list in <oplus_cm_island.c>*/
+static char *physical_sensor_list[PHY_SENSOR_NUM] =
+{
+	"proximity",
+	"ambient_light",
+	"wise_light",
+	"wise_rgb",
+	"rgb",
+	"flicker",
+	"ambient_light_rear",
+	"rgb_rear",
+	"flicker_rear",
+	"spectral_rear",
+	"accel",
+	"gyro",
+	"mag",
+	"hall",
+	"pressure",
+	"sar",
+	"sars",
+	"resampler",
+};
+
+/*see virtual_sensor_list in <oplus_cm_island.c>*/
+static char *virtual_sensor_list[VIR_SENSOR_NUM] =
+{
+	"cm",
+	"lux_aod",
+	"pick_up_motion",
+	"pedometer",
+	"pedometer_minute",
+	"free_fall",
+	"amd_oplus",
+	"oplus_activity_recognition",
+	"oplus_double_tap",
+	"oplus_measurement",
+	"cmc_oplus",
+	"device_orient",
+	"camera_protect",
+	"elevator_detect",
+	"ois_system",
+};
 void send_uevent_to_fb(int monitor_info) {
 	struct device *dev=NULL;
 	char *env[2]={0x00};
@@ -221,14 +289,14 @@ static int find_event_id(int16_t event_id)
 	return ret;
 }
 
-static struct timespec oplus_current_kernel_time(void) {
+static struct timespec64 oplus_current_kernel_time(void) {
 	struct timespec64 ts64;
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 19, 0))
         ts64 = current_kernel_time64();
 #else
 	ktime_get_coarse_real_ts64(&ts64);
 #endif
-	return timespec64_to_timespec(ts64);
+	return ts64;
 }
 
 #define MSM_ARCH_TIMER_FREQ 19200000
@@ -283,6 +351,40 @@ finish:
 	return found;
 }
 
+static void reset_subsys_sleep_stats(void) {
+	int index = 0;
+	struct timespec64 now_time;
+
+	memset(&g_subsys_sleep_stats, 0 , sizeof(struct subsys_sleep_stats));
+	for (index = 0; index < SUBSYS_COUNTS; index++) {
+		g_subsys_sleep_stats.sleep_info[index].name = subsys_names[index];
+	}
+	now_time = oplus_current_kernel_time();
+	g_subsys_sleep_stats.time_s = (now_time.tv_sec * 1000 + now_time.tv_nsec / 1000000);
+}
+
+static void statistical_subsys_sleep_info(void) {
+	int index = 0;
+	int cnt = 0;
+	for (index = 0; index < SUBSYS_COUNTS; index++) {
+		uint64_t min = 100, max = 0, sum = 0, avr = 0;
+		for (cnt = 0; cnt < g_subsys_sleep_stats.count; cnt++) {
+			min = g_subsys_sleep_stats.sleep_info[index].arr[cnt] < min ?
+						g_subsys_sleep_stats.sleep_info[index].arr[cnt] : min;
+			max = g_subsys_sleep_stats.sleep_info[index].arr[cnt] > max ?
+						g_subsys_sleep_stats.sleep_info[index].arr[cnt] : max;
+			sum += g_subsys_sleep_stats.sleep_info[index].arr[cnt];
+		}
+		avr = sum / g_subsys_sleep_stats.count;
+		g_subsys_sleep_stats.sleep_info[index].min = min;
+		g_subsys_sleep_stats.sleep_info[index].max = max;
+		g_subsys_sleep_stats.sleep_info[index].avr = avr;
+
+		pr_info("subsys_sleep_stats: subsys_name=%s, cnt=%d, max=%d, min=%d, avr=%d\n",
+				g_subsys_sleep_stats.sleep_info[index].name, g_subsys_sleep_stats.count, max, min, avr);
+	}
+}
+
 static void subsystem_desc_init(struct subsystem_desc *subsystem_desc) {
 	int index = 0;
 	for (index = 0; index < SUBSYS_COUNTS; index++) {
@@ -299,7 +401,7 @@ static void subsystem_desc_init(struct subsystem_desc *subsystem_desc) {
 static void read_subsystem_sleep_time(struct subsystem_desc *subsystem_desc, int status) {
 	int index = 0;
 	int ret = 0;
-	struct timespec now_time;
+	struct timespec64 now_time;
 	if (status == 1) {
 		for (index = 0; index < SUBSYS_COUNTS; index++) {
 			ret = oplus_subsystem_sleeptime(subsystem_desc[index].subsys_name,
@@ -325,8 +427,11 @@ static void cal_subsystem_sleep_ratio(struct subsystem_desc *subsystem_desc) {
 	uint64_t subsys_sleep = 0;
 	uint64_t ap_sleep = 0;
 	char *adsp_sleep_ratio_fied = "power_adsp_sleep_ratio";
+	char *adsp_sleep_stats_fied = "power_adsp_sleep_stats";
+	uint64_t subsys_sleep_stats = 0;
 	char payload[1024] = {0x00};
 	int flag = 0;
+	bool stats_cnt = false;
 
 	for (index = 0; index < SUBSYS_COUNTS; index++) {
 		if(subsystem_desc[index].is_err != 0) {
@@ -335,12 +440,22 @@ static void cal_subsystem_sleep_ratio(struct subsystem_desc *subsystem_desc) {
 			ap_sleep = subsystem_desc[index].ap_sleep_time_p - subsystem_desc[index].ap_sleep_time_s;
 			subsys_sleep_ratio = subsys_sleep * 100 / ap_sleep;
 			subsystem_desc[index].subsys_sleep_ratio = subsys_sleep_ratio;
-			pr_info("subsys_sleep =%d, ap_sleep=%d\n", subsys_sleep, ap_sleep);
 
-			pr_info("subsys_sleep_ratio =%d, subsys_name=%s\n",
-				subsys_sleep_ratio, subsystem_desc[index].subsys_name);
-			if ((ap_sleep > (2 * 3600 * 1000)) && (subsys_sleep_ratio < 10)) {
-					flag = 1;
+			pr_info("subsys_sleep_ratio of %s: subsys*100/ap = %d*100/%d=%d\n",
+				subsystem_desc[index].subsys_name, subsys_sleep, ap_sleep, subsys_sleep_ratio);
+
+			if (ap_sleep > (24 * 3600 * 1000 / SLEEP_INFO_CNT)) {
+				g_subsys_sleep_stats.sleep_info[index].arr[g_subsys_sleep_stats.count] = subsystem_desc[index].subsys_sleep_ratio;
+				stats_cnt = true;
+				pr_info("subsys_sleep_stats %s[%d]: subsys*100/ap = %d\n",
+					subsystem_desc[index].subsys_name, g_subsys_sleep_stats.count,
+					g_subsys_sleep_stats.sleep_info[index].arr[g_subsys_sleep_stats.count]);
+			}
+
+			if ((ap_sleep > (3 * 3600 * 1000)) && (subsys_sleep_ratio < 10)) {
+					if (index == 0 || index == 2) {/*ADSP:0, SLPI:2*/
+						flag = 0; /*Do not feedback power_info, omly print*/
+					}
 					memset(payload, 0 , sizeof(payload));
 					scnprintf(payload, sizeof(payload),
 							"NULL$$EventField@@%s$$FieldData@@%s$$detailData@@%llu",
@@ -353,13 +468,34 @@ static void cal_subsystem_sleep_ratio(struct subsystem_desc *subsystem_desc) {
 			}
 		}
 	}
-	if (flag == 1) {
-		#ifndef DEBUG_SLEEP_RATIO
-		send_uevent_to_fb(REQ_DEBUG_SLEEP_RATIO);
-		#else
-		send_uevent_to_fb(REQ_SSR_SLEEP_RATIO);
-		#endif
+	if (stats_cnt) {
+		g_subsys_sleep_stats.count++;
 	}
+
+	if ((g_subsys_sleep_stats.count >= SLEEP_INFO_CNT) ||
+		(g_subsys_sleep_stats.count > 0 && (subsystem_desc[0].ap_sleep_time_p - g_subsys_sleep_stats.time_s >= (24 * 3600 * 1000)))) {
+		statistical_subsys_sleep_info();
+		for (index = 0; index < SUBSYS_COUNTS; index++) {
+			subsys_sleep_stats = (g_subsys_sleep_stats.sleep_info[index].max << 0) |
+							(g_subsys_sleep_stats.sleep_info[index].min << 3) | (g_subsys_sleep_stats.sleep_info[index].avr<< 6);
+			memset(payload, 0 , sizeof(payload));
+			scnprintf(payload, sizeof(payload),
+					"NULL$$EventField@@%s$$FieldData@@%s$$detailData@@%llu",
+					adsp_sleep_stats_fied,
+					subsystem_desc[index].subsys_name,
+					subsys_sleep_stats);
+			#if defined(CONFIG_OPLUS_FEATURE_FEEDBACK) || defined(CONFIG_OPLUS_FEATURE_FEEDBACK_MODULE)
+			oplus_kevent_fb(FB_SENSOR, SENSOR_POWER_TYPE, payload);
+			#endif
+		}
+		reset_subsys_sleep_stats();
+	}
+        /*
+        TO DO
+	if (flag == 1) {
+		send_uevent_to_fb(REQ_SSC_POWER_INFO);
+	}
+        */
 }
 
 static ssize_t adsp_notify_show(struct device *dev,
@@ -592,7 +728,7 @@ static struct delivery_type delivery_t[2] = {
 	},
 };
 
-static struct proc_type proc_t[5] = {
+static struct proc_type proc_t[6] = {
 	{
 		.name = "ssc",
 		.type = SSC,
@@ -613,6 +749,25 @@ static struct proc_type proc_t[5] = {
 		.name = "cdsp",
 		.type = CDSP,
 	},
+	{
+		.name = "ncs",
+		.type = NCS,
+	},
+};
+
+static struct req_msg_id req_msg_id_t[3] = {
+	{
+		.name = "513",
+		.type = MSG_ID_513,
+	},
+	{
+		.name = "514",
+		.type = MSG_ID_514,
+	},
+	{
+		.name = "other",
+		.type = MSG_ID_OTHER,
+	},
 };
 
 int procce_special_event_id(unsigned short event_id, int count,
@@ -620,57 +775,63 @@ int procce_special_event_id(unsigned short event_id, int count,
 {
 	int ret = 0;
 	int index = 0;
+	int ii = 0;
 
 	if (event_id == ALAILABLE_SENSOR_LIST_ID) {
 		sensor_fb_cxt->sensor_list[0] = (uint32_t)
 			sensor_fb_cxt->fb_smem.event[count].buff[0];
 		sensor_fb_cxt->sensor_list[1] = (uint32_t)
 			sensor_fb_cxt->fb_smem.event[count].buff[1];
-		pr_info("sensor_list virt_sns = 0x%x, phy_sns = 0x%x\n",
+		pr_info("available_sensor_list virt_sns = 0x%x, phy_sns = 0x%x\n",
 			sensor_fb_cxt->sensor_list[0], sensor_fb_cxt->sensor_list[1]);
+		for (ii = 0; ii < VIR_SENSOR_NUM; ii++) {
+			if (sensor_fb_cxt->fb_smem.event[count].buff[0] & ((1 << ii))) {
+				pr_info("available_virt_sns[ii]: %s= \n", virtual_sensor_list[ii]);
+			}
+		}
+		for (ii = 0; ii < PHY_SENSOR_NUM; ii++) {
+			if (sensor_fb_cxt->fb_smem.event[count].buff[1] & ((1 << ii))) {
+				pr_info("available_phy_sns[ii]: %s= \n", physical_sensor_list[ii]);
+			}
+		}
 		ret = 1;
-	} else if (event_id >= POWER_ACCEL_INFO_ID && event_id <= POWER_WISE_LIGHT_INFO_ID) {
+	} else if (event_id >= POWER_ACCEL_INFO_ID && event_id <= POWER_SARS_INFO_ID) {
 		index = find_event_id(event_id);
 		if (index >= 0) {
-			//proc_index = sensor_fb_cxt->fb_smem.event[count].buff[0] & 0x07 < 0;
-            pr_info("sensor_power_monitor %s: wakeup_rate:%d\n",
+			pr_info("%s: req_count:%d, wakeup_rate:%d\n",
 				g_fb_conf[index].fb_field,
-				sensor_fb_cxt->fb_smem.event[count].buff[2]);
-			pr_info("sensor_power_monitor %s : proc_type: %s, %s, %s, %s, %s, %s, %s, %s\n",
-				g_fb_conf[index].fb_field,
-				proc_t[(sensor_fb_cxt->fb_smem.event[count].buff[0] >> 0) & 0x07].name,
-				proc_t[(sensor_fb_cxt->fb_smem.event[count].buff[0] >> 3) & 0x07].name,
-				proc_t[(sensor_fb_cxt->fb_smem.event[count].buff[0] >> 6) & 0x07].name,
-				proc_t[(sensor_fb_cxt->fb_smem.event[count].buff[0] >> 9) & 0x07].name,
-				proc_t[(sensor_fb_cxt->fb_smem.event[count].buff[0] >> 12) & 0x07].name,
-				proc_t[(sensor_fb_cxt->fb_smem.event[count].buff[0] >> 15) & 0x07].name,
-				proc_t[(sensor_fb_cxt->fb_smem.event[count].buff[0] >> 18) & 0x07].name,
-				proc_t[(sensor_fb_cxt->fb_smem.event[count].buff[0] >> 21) & 0x07].name);
-			pr_info("sensor_power_monitor %s : delivery_type: %s, %s, %s, %s, %s, %s, %s, %s\n",
-				g_fb_conf[index].fb_field,
-				delivery_t[(sensor_fb_cxt->fb_smem.event[count].buff[1] >> 0) & 0x07].name,
-				delivery_t[(sensor_fb_cxt->fb_smem.event[count].buff[1] >> 3) & 0x07].name,
-				delivery_t[(sensor_fb_cxt->fb_smem.event[count].buff[1] >> 6) & 0x07].name,
-				delivery_t[(sensor_fb_cxt->fb_smem.event[count].buff[1] >> 9) & 0x07].name,
-				delivery_t[(sensor_fb_cxt->fb_smem.event[count].buff[1] >> 12) & 0x07].name,
-				delivery_t[(sensor_fb_cxt->fb_smem.event[count].buff[1] >> 15) & 0x07].name,
-				delivery_t[(sensor_fb_cxt->fb_smem.event[count].buff[1] >> 18) & 0x07].name,
-				delivery_t[(sensor_fb_cxt->fb_smem.event[count].buff[1] >> 21) & 0x07].name);
-			ret = 1;
+				sensor_fb_cxt->fb_smem.event[count].buff[4],
+				sensor_fb_cxt->fb_smem.event[count].buff[3]);
+			for (ii = 0; ii < sensor_fb_cxt->fb_smem.event[count].buff[4]; ii++) {
+				pr_info("%s req[%d] : proc_type=%s, delivery_type=%s, req_msg_id=%s\n",
+					g_fb_conf[index].fb_field, ii,
+					proc_t[(sensor_fb_cxt->fb_smem.event[count].buff[0] >> (ii * 3)) & 0x07].name,
+					delivery_t[(sensor_fb_cxt->fb_smem.event[count].buff[1] >> (ii * 3)) & 0x07].name,
+					req_msg_id_t[(sensor_fb_cxt->fb_smem.event[count].buff[2] >> (ii * 3)) & 0x07].name);
+			}
+		ret = 1;
 		}
 	} else if (event_id == POWER_SENSOR_INFO_ID) {
-		pr_info("sensor_power_monitor: proximity:%d, wise_light:%d, ambient_light:%d, accel:%d, gyro:%d, mag:%d\n",
-			(sensor_fb_cxt->fb_smem.event[count].buff[1] >> 0) & 0x1,
-			(sensor_fb_cxt->fb_smem.event[count].buff[1] >> 1) & 0x1,
-			(sensor_fb_cxt->fb_smem.event[count].buff[1] >> 2) & 0x1,
-			(sensor_fb_cxt->fb_smem.event[count].buff[1] >> 3) & 0x1,
-			(sensor_fb_cxt->fb_smem.event[count].buff[1] >> 4) & 0x1,
-			(sensor_fb_cxt->fb_smem.event[count].buff[1] >> 5) & 0x1);
-		ret = 1;
-	} else if (event_id == POWER_WAKE_UP_RATE_ID) {
-		pr_info("sensor_power_monitor: normal_mode_wakeup_rate:%d, island_mode_wakeup_rate:%d\n",
+		pr_info("enable_sensor_list virt_sns = 0x%x, phy_sns = 0x%x\n",
 			sensor_fb_cxt->fb_smem.event[count].buff[0],
 			sensor_fb_cxt->fb_smem.event[count].buff[1]);
+		for (ii = 0; ii < VIR_SENSOR_NUM; ii++) {
+			if (sensor_fb_cxt->fb_smem.event[count].buff[0] & (1 << ii)) {
+				pr_info("enable_virt_sns[ii]: %s\n", virtual_sensor_list[ii]);
+			}
+		}
+		for (ii = 0; ii < PHY_SENSOR_NUM; ii++) {
+			if (sensor_fb_cxt->fb_smem.event[count].buff[1] & ((1 << ii))) {
+				pr_info("enable_phy_sns[ii]: %s \n", physical_sensor_list[ii]);
+			}
+		}
+		ret = 1;
+	} else if (event_id == POWER_WAKE_UP_RATE_ID) {
+		pr_info("sensor_power_monitor: normal_mode_wakeup_rate:%d, island_mode_wakeup_rate:%d, mcps:%d, latency:%d\n",
+			sensor_fb_cxt->fb_smem.event[count].buff[0],
+			sensor_fb_cxt->fb_smem.event[count].buff[1],
+			sensor_fb_cxt->fb_smem.event[count].buff[2],
+			sensor_fb_cxt->fb_smem.event[count].buff[3]);
 		ret = 1;
 	}
 
@@ -705,16 +866,18 @@ static int parse_shr_info(struct sensor_fb_cxt *sensor_fb_cxt)
 
 		memset(payload, 0, sizeof(payload));
 		memset(detail_buff, 0, sizeof(detail_buff));
-		snprintf(detail_buff, sizeof(detail_buff), "%d %d %d",
+		snprintf(detail_buff, sizeof(detail_buff), "%d %d %d %d %d",
 			sensor_fb_cxt->fb_smem.event[count].buff[0],
 			sensor_fb_cxt->fb_smem.event[count].buff[1],
-			sensor_fb_cxt->fb_smem.event[count].buff[2]);
+			sensor_fb_cxt->fb_smem.event[count].buff[2],
+			sensor_fb_cxt->fb_smem.event[count].buff[3],
+			sensor_fb_cxt->fb_smem.event[count].buff[4]);
 		fb_len += scnprintf(payload, sizeof(payload),
 				"NULL$$EventField@@%s$$FieldData@@%d$$detailData@@%s$$SensorName@@0x%x",
 				g_fb_conf[index].fb_field,
 				sensor_fb_cxt->fb_smem.event[count].count,
 				detail_buff,
-                                sensor_fb_cxt->fb_smem.event[count].name);
+				sensor_fb_cxt->fb_smem.event[count].name);
 		pr_info("payload1 =%s\n", payload);
 #if defined(CONFIG_OPLUS_FEATURE_FEEDBACK) || defined(CONFIG_OPLUS_FEATURE_FEEDBACK_MODULE)
 		oplus_kevent_fb(FB_SENSOR, g_fb_conf[index].fb_event_id, payload);
@@ -785,7 +948,8 @@ static ssize_t sensor_list_read_proc(struct file *file, char __user *buf,
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 static const struct proc_ops sensor_list_fops = {
-        .proc_read = sensor_list_read_proc,
+	.proc_read = sensor_list_read_proc,
+	.proc_lseek = default_llseek,
 };
 #else
 static struct file_operations sensor_list_fops = {
@@ -860,6 +1024,38 @@ static int sensor_fb_notifier(struct notifier_block *nb,
 	}
 	return 0;
 }
+#elif IS_ENABLED(CONFIG_OPLUS_SENSOR_DRM_PANEL_NOTIFY)
+void ssc_fb_set_screen_status(int status)
+{
+	static screen_status = SCREEN_INIT;
+	struct sensor_fb_cxt *sns_cxt = g_sensor_fb_cxt;
+
+	if (status == SCREEN_ON && screen_status != SCREEN_ON) {
+		screen_status = SCREEN_ON;
+
+		spin_lock(&sns_cxt->rw_lock);
+		sns_cxt->node_type = 2; /*sleep ratio type resume*/
+		spin_unlock(&sns_cxt->rw_lock);
+		set_bit(THREAD_WAKEUP, (unsigned long *)&sns_cxt->wakeup_flag);
+
+		/*wake_up_interruptible(&sensor_fb_cxt->wq);*/
+		wake_up(&sns_cxt->wq);
+		pr_info("%s: sensor_fb_notifier resume \n", __func__);
+	} else if (status == SCREEN_OFF && screen_status != SCREEN_OFF) {
+		screen_status = SCREEN_OFF;
+
+		spin_lock(&sns_cxt->rw_lock);
+		sns_cxt->node_type = 3; /*sleep ratio type suspend*/
+		spin_unlock(&sns_cxt->rw_lock);
+
+		set_bit(THREAD_WAKEUP, (unsigned long *)&sns_cxt->wakeup_flag);
+		/*wake_up_interruptible(&sensor_fb_cxt->wq);*/
+		wake_up(&sns_cxt->wq);
+		pr_info("%s: sensor_fb_notifier suspend \n", __func__);
+	}
+	return;
+}
+EXPORT_SYMBOL(ssc_fb_set_screen_status);
 #endif /* CONFIG_DRM_MSM */
 //#endif /* CONFIG_FB */
 
@@ -904,6 +1100,7 @@ static int sensor_sleep_ratio_init(struct sensor_fb_cxt *sensor_fb_cxt) {
 
 	pr_err("sensor_sleep_ratio_init,err=%d\n", err);
 	subsystem_desc_init(sensor_fb_cxt->subsystem_desc);
+	reset_subsys_sleep_stats();
 #if defined(CONFIG_DRM_MSM)
 	sensor_fb_cxt->fb_notif.notifier_call = sensor_fb_notifier;
 	err = msm_drm_register_client(&sensor_fb_cxt->fb_notif);
@@ -977,10 +1174,10 @@ static int sensor_feedback_probe(struct platform_device *pdev)
 
 	return 0;
 create_task_failed:
-sleep_ratio_init_failed:
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 reserve_fb_share_mem_failed:
 #endif
+sleep_ratio_init_failed:
 create_sensor_node_failed:
 	kfree(sensor_fb_cxt);
 	g_sensor_fb_cxt = NULL;

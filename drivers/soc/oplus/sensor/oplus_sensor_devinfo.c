@@ -13,8 +13,6 @@
 #define ALIGN4(s) ((sizeof(s) + 3)&(~0x3))
 #define SAR_MAX_CH_NUM 5
 
-#define ALS_DEFAULT_PROPERTY_VALUE 1000
-
 extern int oplus_press_cali_data_init(void);
 extern void oplus_press_cali_data_clean(void);
 
@@ -39,7 +37,7 @@ __attribute__((weak)) void oplus_device_dir_redirect(struct sensor_info * chip)
 	pr_info("%s oplus_device_dir_redirect \n", __func__);
 };
 
-__attribute__((weak)) unsigned int get_serialID(void)
+__attribute__((weak)) unsigned int get_serialID()
 {
 	return 0;
 };
@@ -206,7 +204,6 @@ static void parse_proximity_sensor_dts(struct sensor_hw* hw, struct device_node 
 		"force_cali_limit",
 		"cali_jitter_limit",
 		"cal_offset_margin",
-		"esd_gpio_use"
 	};
 	rc = of_property_read_u32(ch_node, "ps-type", &value);
 
@@ -298,23 +295,15 @@ static void parse_light_sensor_dts(struct sensor_hw* hw, struct device_node *ch_
 		"ir_coef_val_1",
 		"ir_coef_val_2",
 		"ir_coef_val_3",
-		"ir_coef_val_4",
-		"lb-dbv-coefs-id",
-		"light-cut",
+		"ir_coef_val_4"
 		/*lb para end*/
 	};
-
-	gdata->row_coe = 1000;
 
 	for (di = 0; di < ARRAY_SIZE(als_feature); di++) {
 		rc = of_property_read_u32(ch_node, als_feature[di], &value);
 
 		if (!rc) {
 			hw->feature.feature[di] = value;
-
-			if (!strncmp(als_feature[di], "als-factor", 10)) {
-				gdata->row_coe = value;
-			}
 		} else if (0 == strncmp(als_feature[di], "norm", 4)) {
 			hw->feature.feature[di] = 1057;
 		} else if (0 == strncmp(als_feature[di], "als_ratio_type", strlen("als_ratio_type"))) {
@@ -448,8 +437,7 @@ static void parse_cct_sensor_dts(struct sensor_hw *hw, struct device_node *ch_no
 		"fd-time",
 		"fac-cali-fd-time",
 		"first-fd-gain",
-		"fac-cali-fd-gain",
-		"algo-flag"
+		"fac-cali-fd-gain"
 	};
 
 	hw->feature.feature[0] = 1;/*default use decoupled driver oplus_cct */
@@ -530,8 +518,7 @@ static void parse_accelerometer_sensor_dts(struct sensor_hw *hw, struct device_n
 	int rc = 0;
 	int di = 0;
 	char *feature[] = {
-		"use-sois",
-		"single-acc"
+		"use-sois"
 	};
 
 	hw->feature.feature[0] = 0;/*default not use s-ois */
@@ -615,14 +602,8 @@ static void parse_lux_aod_sensor_dts(struct sensor_algorithm *algo, struct devic
 		algo->parameter[2] = value;
 	}
 
-	rc = of_property_read_u32(ch_node, "fold-feature", &value);
-
-	if (!rc) {
-		algo->feature[0] = value;
-	}
-
-	SENSOR_DEVINFO_DEBUG("thrd-low: %d, thrd-high: %d, als-type: %d, fold-feature: %d\n",
-		algo->parameter[0], algo->parameter[1], algo->parameter[2], algo->feature[0]);
+	SENSOR_DEVINFO_DEBUG("thrd-low: %d, thrd-high: %d, als-type: %d\n",
+		algo->parameter[0], algo->parameter[1], algo->parameter[2]);
 
 }
 
@@ -645,18 +626,16 @@ static void parse_mag_fusion_sensor_dts(struct sensor_algorithm *algo, struct de
 	int value = 0;
 
 	rc = of_property_read_u32(ch_node, "fusion-type", &value);
-
 	if (!rc) {
 		algo->feature[0] = value;
 	}
 
-	rc = of_property_read_u32(ch_node, "mag-type", &value);
-
+	rc = of_property_read_u32(ch_node, "fold-feature", &value);
 	if (!rc) {
 		algo->feature[1] = value;
 	}
 
-	SENSOR_DEVINFO_DEBUG("fusion-type :%d mag-type : %d\n", algo->feature[0], algo->feature[1]);
+	SENSOR_DEVINFO_DEBUG("fusion-type:%d, fold-feature:%d\n", algo->feature[0], algo->feature[1]);
 }
 
 static void parse_oplus_measurement_sensor_dts(struct sensor_algorithm *algo, struct device_node *ch_node)
@@ -760,42 +739,13 @@ static void oplus_sensor_parse_dts(struct platform_device *pdev)
 		}
 	}/*for_each_child_of_node */
 
-	rc = of_property_read_u32(node, "als-dev_coef_1", &value);
+	rc = of_property_read_u32(node, "als-row-coe", &value);
 
 	if (rc) {
-		gdata->dev_coef_1 = ALS_DEFAULT_PROPERTY_VALUE;
+		gdata->row_coe = 1000;
 	} else {
-		gdata->dev_coef_1 = value == ALS_DEFAULT_PROPERTY_VALUE ?
-				ALS_DEFAULT_PROPERTY_VALUE - 1 : value;
+		gdata->row_coe = value;
 	}
-
-	rc = of_property_read_u32(node, "als-dev_coef_2", &value);
-
-	if (rc) {
-		gdata->dev_coef_2 = ALS_DEFAULT_PROPERTY_VALUE;
-	} else {
-		gdata->dev_coef_2 = value == ALS_DEFAULT_PROPERTY_VALUE ?
-				ALS_DEFAULT_PROPERTY_VALUE - 1 : value;
-	}
-
-	rc = of_property_read_u32(node, "als-dev_coef_h2l", &value);
-
-	if (rc) {
-		gdata->dev_coef_h2l = ALS_DEFAULT_PROPERTY_VALUE;
-	} else {
-		gdata->dev_coef_h2l = value == ALS_DEFAULT_PROPERTY_VALUE ?
-				ALS_DEFAULT_PROPERTY_VALUE - 1 : value;
-	}
-
-	rc = of_property_read_u32(node, "als-dev_coef_l2h", &value);
-
-	if (rc) {
-		gdata->dev_coef_l2h = ALS_DEFAULT_PROPERTY_VALUE;
-	} else {
-		gdata->dev_coef_l2h = value == ALS_DEFAULT_PROPERTY_VALUE ?
-				ALS_DEFAULT_PROPERTY_VALUE - 1 : value;
-	}
-
 	rc = of_property_read_u32(node, "ldo_enable", &g_ldo_enable);
 
 	oplus_device_dir_redirect(chip);
@@ -1219,109 +1169,47 @@ static ssize_t row_coe_write_proc(struct file *file, const char __user *buf,
 	return count;
 }
 
-static ssize_t dev_coef_read_proc(struct file *file, char __user *buf,
-	size_t count, loff_t *off)
-{
-	char page[256] = {0};
-	int len = 0;
-
-	if (!gdata) {
-		return -ENOMEM;
-	}
-
-	len = sprintf(page, "%d %d %d %d", gdata->dev_coef_1, gdata->dev_coef_2, gdata->dev_coef_h2l, gdata->dev_coef_l2h);
-
-	if (len > *off) {
-		len -= *off;
-	} else {
-		len = 0;
-	}
-
-	if (copy_to_user(buf, page, (len < count ? len : count))) {
-		return -EFAULT;
-	}
-
-	*off += len < count ? len : count;
-	return (len < count ? len : count);
-}
-
-static ssize_t dev_coef_write_proc(struct file *file, const char __user *buf,
-	size_t count, loff_t *off)
-
-{
-	char page[256] = {0};
-
-	if (!gdata) {
-		return -ENOMEM;
-	}
-
-
-	if (count > 256) {
-		count = 256;
-	}
-
-	if (count > *off) {
-		count -= *off;
-	} else {
-		count = 0;
-	}
-
-	if (copy_from_user(page, buf, count)) {
-		return -EFAULT;
-	}
-
-	*off += count;
-
-	if (sscanf(page, "%d %d %d %d", &gdata->dev_coef_1, &gdata->dev_coef_2, &gdata->dev_coef_h2l, &gdata->dev_coef_l2h) != 4) {
-		count = -EINVAL;
-		return count;
-	}
-
-	return count;
-}
-
-
-
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 static const struct proc_ops als_type_fops = {
 	.proc_read = als_type_read_proc,
+	.proc_lseek = default_llseek,
 };
 
 static const struct proc_ops red_max_lux_fops = {
 	.proc_read = red_max_lux_read_proc,
 	.proc_write = red_max_lux_write_proc,
+	.proc_lseek = default_llseek,
 };
 
 static const struct proc_ops white_max_lux_fops = {
 	.proc_read = white_max_lux_read_proc,
 	.proc_write = white_max_lux_write_proc,
+	.proc_lseek = default_llseek,
 };
 
 static const struct proc_ops blue_max_lux_fops = {
 	.proc_read = blue_max_lux_read_proc,
 	.proc_write = blue_max_lux_write_proc,
+	.proc_lseek = default_llseek,
 };
 
 static const struct proc_ops green_max_lux_fops = {
 	.proc_read = green_max_lux_read_proc,
 	.proc_write = green_max_lux_write_proc,
+	.proc_lseek = default_llseek,
 };
 
 static const struct proc_ops cali_coe_fops = {
 	.proc_read = cali_coe_read_proc,
 	.proc_write = cali_coe_write_proc,
+	.proc_lseek = default_llseek,
 };
 
 static const struct proc_ops row_coe_fops = {
 	.proc_read = row_coe_read_proc,
 	.proc_write = row_coe_write_proc,
+	.proc_lseek = default_llseek,
 };
-
-static const struct proc_ops dev_coef_fops = {
-	.proc_read = dev_coef_read_proc,
-	.proc_write = dev_coef_write_proc,
-};
-
 #else
 static struct file_operations als_type_fops = {
 	.read = als_type_read_proc,
@@ -1356,14 +1244,9 @@ static struct file_operations row_coe_fops = {
 	.read = row_coe_read_proc,
 	.write = row_coe_write_proc,
 };
-
-static struct file_operations dev_coef_fops = {
-	.read = dev_coef_read_proc,
-	.write = dev_coef_write_proc,
-};
 #endif
 
-static int oplus_als_cali_data_init(void)
+static int oplus_als_cali_data_init()
 {
 	int rc = 0;
 	struct proc_dir_entry *pentry;
@@ -1436,16 +1319,6 @@ static int oplus_als_cali_data_init(void)
 		rc = -EFAULT;
 		return rc;
 	}
-
-	pentry = proc_create("dev_coef", 0666, gdata->proc_oplus_als,
-			&dev_coef_fops);
-
-	if (!pentry) {
-		pr_err("create dev_coef_l2h proc failed.\n");
-		rc = -EFAULT;
-		return rc;
-	}
-
 
 	pentry = proc_create("als_type", 0666, gdata->proc_oplus_als,
 			&als_type_fops);
