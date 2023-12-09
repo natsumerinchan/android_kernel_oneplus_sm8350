@@ -153,10 +153,6 @@ struct oplus_als_cali_data {
     int white_max_lux;
     int cali_coe;
     int row_coe;
-	int dev_coef_1;
-	int dev_coef_2;
-	int dev_coef_h2l;
-	int dev_coef_l2h;
     struct proc_dir_entry   *proc_oplus_als;
 };
 
