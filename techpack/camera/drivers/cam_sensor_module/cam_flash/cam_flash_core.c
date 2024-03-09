@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -180,7 +179,6 @@ int cam_flash_i2c_power_ops(struct cam_flash_ctrl *fctrl,
 				return rc;
 			}
 		}
-
 #ifdef OPLUS_FEATURE_CAMERA_COMMON
 		if (!fctrl->pmic_pm8008) {
 			rc = wl2868c_ldo_enable(EXT_LDO6, 1800);
@@ -207,6 +205,7 @@ int cam_flash_i2c_power_ops(struct cam_flash_ctrl *fctrl,
 		fctrl->is_regulator_enabled = true;
 	} else if ((!regulator_enable) &&
 		(fctrl->is_regulator_enabled == true)) {
+
 		rc = cam_sensor_util_power_down(power_info, soc_info);
 #ifdef OPLUS_FEATURE_CAMERA_COMMON
 		if (!fctrl->pmic_pm8008) {
@@ -214,8 +213,7 @@ int cam_flash_i2c_power_ops(struct cam_flash_ctrl *fctrl,
 		}
 #endif /* OPLUS_FEATURE_CAMERA_COMMON*/
 		if (rc) {
-			CAM_ERR(CAM_FLASH, "power down the core is failed:%d",
-				rc);
+			CAM_ERR(CAM_FLASH, "power down the core is failed:%d", rc);
 			return rc;
 		}
 		camera_io_release(&(fctrl->io_master_info));
@@ -1109,10 +1107,6 @@ int cam_flash_i2c_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 
 		/* Loop through multiple command buffers */
 		for (i = 1; i < csl_packet->num_cmd_buf; i++) {
-			rc = cam_packet_util_validate_cmd_desc(&cmd_desc[i]);
-			if (rc)
-				return rc;
-
 			total_cmd_buf_in_bytes = cmd_desc[i].length;
 			processed_cmd_buf_in_bytes = 0;
 			if (!total_cmd_buf_in_bytes)
@@ -1225,7 +1219,6 @@ int cam_flash_i2c_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 
 				break;
 			}
-			cam_mem_put_cpu_buf(cmd_desc[i].mem_handle);
 		}
 		power_info = &fctrl->power_info;
 		if (!power_info) {
@@ -1432,7 +1425,6 @@ update_req_mgr:
 				add_req.req_id, add_req.trigger_eof);
 		}
 	}
-	cam_mem_put_cpu_buf(config.packet_handle);
 	return rc;
 }
 
@@ -1609,8 +1601,6 @@ int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 			rc = -EINVAL;
 			return rc;
 		}
-
-		cam_mem_put_cpu_buf(cmd_desc->mem_handle);
 		break;
 	}
 	case CAM_FLASH_PACKET_OPCODE_SET_OPS: {
@@ -1699,7 +1689,6 @@ int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 			CAM_DBG(CAM_FLASH,
 				"FLASH_CMD_TYPE op:%d, req:%lld",
 				flash_data->opcode, csl_packet->header.request_id);
-
 			if (flash_data->opcode ==
 				CAMERA_SENSOR_FLASH_OP_FIREDURATION) {
 				add_req.trigger_eof = true;
@@ -1718,8 +1707,6 @@ int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 			rc = -EINVAL;
 			return rc;
 		}
-
-		cam_mem_put_cpu_buf(cmd_desc->mem_handle);
 		break;
 	}
 	case CAM_FLASH_PACKET_OPCODE_NON_REALTIME_SET_OPS: {
@@ -1862,7 +1849,6 @@ int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 			return rc;
 		}
 
-		cam_mem_put_cpu_buf(cmd_desc->mem_handle);
 		break;
 	}
 	case CAM_PKT_NOP_OPCODE: {
@@ -1925,7 +1911,6 @@ int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 		}
 	}
 
-	cam_mem_put_cpu_buf(config.packet_handle);
 	return rc;
 }
 

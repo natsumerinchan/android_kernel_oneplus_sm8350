@@ -3519,7 +3519,6 @@ static int msm_vidc_load_resources(int flipped_state,
 	video_load += msm_comm_get_device_load(core,
 					MSM_VIDC_ENCODER, MSM_VIDC_VIDEO,
 					quirks);
-
 	max_video_load = inst->core->resources.max_load +
 				inst->capability.cap[CAP_MBS_PER_FRAME].max;
 	max_image_load = inst->core->resources.max_image_load;
@@ -5978,7 +5977,6 @@ static int msm_vidc_check_mbps_supported(struct msm_vidc_inst *inst)
 
 		max_video_load = inst->core->resources.max_load;
 		max_image_load = inst->core->resources.max_image_load;
-
 #ifdef OPLUS_ARCH_EXTENDS
 		max_video_load += NUM_MBS_PER_SEC(1920, 1088,40);
 #endif
@@ -6862,7 +6860,7 @@ int msm_comm_qbuf_cache_operations(struct msm_vidc_inst *inst,
 			rc = msm_smem_cache_operations(mbuf->smem[i].dma_buf,
 					cache_op, offset, size, inst->sid);
 			if (rc)
-				print_vidc_buffer(VIDC_ERR,
+				print_vidc_buffer(VIDC_HIGH,
 					"qbuf cache ops failed", inst, mbuf);
 		}
 	}
@@ -6924,7 +6922,7 @@ int msm_comm_dqbuf_cache_operations(struct msm_vidc_inst *inst,
 			rc = msm_smem_cache_operations(mbuf->smem[i].dma_buf,
 					cache_op, offset, size, inst->sid);
 			if (rc)
-				print_vidc_buffer(VIDC_ERR,
+				print_vidc_buffer(VIDC_HIGH,
 					"dqbuf cache ops failed", inst, mbuf);
 		}
 	}
@@ -7842,6 +7840,7 @@ u32 msm_comm_calc_framerate(struct msm_vidc_inst *inst,
 	}
 	interval = (u32)(timestamp_us - prev_ts);
 
+
 #ifndef OPLUS_ARCH_EXTENDS
 	framerate = (1000000 + interval / 2) / interval;
 	if (framerate > capability->cap[CAP_FRAMERATE].max)
@@ -7860,7 +7859,7 @@ u32 msm_comm_calc_framerate(struct msm_vidc_inst *inst,
 
 
 	if((framerate >> 16) > fpsLimit) {
-	s_vpr_h(inst->sid, "%s:force from %d to fps:%d\n",
+        s_vpr_h(inst->sid, "%s:force from %d to fps:%d\n",
 			__func__, framerate >> 16,inst->clk_data.frame_rate >> 16);
 		framerate = inst->clk_data.frame_rate;
 	}
@@ -7892,7 +7891,7 @@ u32 msm_comm_get_max_framerate(struct msm_vidc_inst *inst)
 #else /* OPLUS_ARCH_EXTENDS */
 	avg_framerate = count > 12 ? (avg_framerate / count) : (15 << 16);
 	s_vpr_h(inst->sid, "%s: session type is %d,average fps %lld, list size %u\n",
-		__func__, inst->session_type, avg_framerate >> 16, count);
+	    __func__, inst->session_type, avg_framerate >> 16, count);
 #endif /* OPLUS_ARCH_EXTENDS */
 	mutex_unlock(&inst->timestamps.lock);
 	return (u32)avg_framerate;

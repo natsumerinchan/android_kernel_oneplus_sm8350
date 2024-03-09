@@ -296,7 +296,7 @@ static void camera_exit(void)
 	CAM_INFO(CAM_UTIL, "Spectra camera driver exited!");
 }
 
-late_initcall(camera_init);
+module_init(camera_init);
 module_exit(camera_exit);
 
 MODULE_DESCRIPTION("Spectra camera driver");
