@@ -4046,20 +4046,6 @@ long do_unlinkat(int dfd, struct filename *name)
 	struct inode *inode = NULL;
 	struct inode *delegated_inode = NULL;
 	unsigned int lookup_flags = 0;
-
-#if defined(CONFIG_KSU) && defined(CONFIG_KSU_SUSFS)
-	struct filename* fname;
-	int status;
-
-	fname = getname_safe(pathname);
-	status = susfs_sus_path_by_filename(fname, &error, SYSCALL_FAMILY_UNLINKAT);
-	putname_safe(fname);
-
-	if (status) {
-		return error;
-	}
-#endif
-
 retry:
 	name = filename_parentat(dfd, name, lookup_flags, &path, &last, &type);
 	if (IS_ERR(name))
